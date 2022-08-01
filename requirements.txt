@@ -1,5 +1,5 @@
 # Using python 3.10.2
-scikit-learn=1.1.1
-tensorflow=2.9.1
-matplotlib=3.5.2
-seaborn=0.11.2
+scikit-learn==1.1.1
+tensorflow==2.9.1
+matplotlib==3.5.2
+seaborn==0.11.2
