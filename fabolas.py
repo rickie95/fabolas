@@ -21,33 +21,106 @@ from sklearn.model_selection import cross_validate
 from sklearn import svm
 import seaborn as sb
 import numpy as np
+import time
 
 
-import matplotlib.pyplot as matplot
+import matplotlib.pyplot as plt
+
+def obj_function(configuration, data):
+    """
+    - configuration: dictionary of parameters
+        eg.
+        {
+            "C" : 10,
+            "gamma" : 0.001
+        }
+    - data: 
+    """
+    startTime = time.time()
+
+    # Do thing
+    regressor = svm.SVC(C=configuration["C"], gamma=configuration["gamma"], kernel="rbf").fit(data["X"], data["y"])
+    score = regressor.score(data["X_validation"], data["y_validation"])
+
+    executionTime = time.time() - startTime
+
+    return score, executionTime
 
 
-training_sizes = [128, 16]
+def init_dataset(obj_function, parameters, dataset, sizes, initial_points=10):
+    """
+    Evaluates the obj function with K samples of the parameter space for each subset size.
 
-results = {}
+    - obj_function: func(configuration, size)
+        Function to optimize
+    - parameters: dict of parameters
+        An entry for each parameter, including its bounds
+        eg.
+        {   
+            "A" : { "max" : 10, "min" : -10 },
+            "B" : { "max" : 1, "min" : 0 }
+        }
+    - dataset:
+    - sizes: fractions of original dataset to consider
+        eg. [128, 64, 2, 1] -> 1/128, 1/64, 1/2, 1
+    """
+
+    # Generate initial configurations
+    configurations = []
+    for i in range(initial_points):
+        config = {}
+        for p in parameters:
+            config[p] = random.choice(range(parameters[p]["min"], parameters[p]["max"] + 1))
+        configurations.append(config)
+
+    # For each training subset size, evaluate the function over all generated configurations
+    for s in sizes:
+        for c in configurations:
+            score, time = obj_function(configuration, data)
+            dataset.add(configuration, training_size, score, time)
+
+    return dataset
+
+def acquisition_function():
+    # TODO
+    training_size = 128
+    configuration = {"C" : 10, "gamma": 0.00001}
+    return configuration, training_size
+
+def load_dataset():
+    
+    return data
 
 def main():
+    #dataset = init_dataset(obj_function, parameters, dataset, dataset_subsets_size)
+    dataset = []
     (train_x, train_y), (test_x, test_y) = mnist.load_data()
+
     train_x = train_x.reshape(train_x.shape[0], train_x.shape[1] * train_x.shape[2])
     test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
 
-    for training_size in training_sizes:
-        indices = random.sample(range(1, train_x.shape[0]), floor(train_x.shape[0]/training_size))
-        results[training_size] = np.zeros((20, 20))
+    configuration, training_size = acquisition_function()
 
-        for c, gamma in np.ndindex((20,20)):
-            classifier = svm.SVC(kernel='rbf', C=pow(e, c - 10), gamma=pow(e, gamma - 10))
-            classifier.fit(train_x[indices], train_y[indices])
-            predictions = classifier.predict(test_x)
-            score = accuracy_score(predictions, test_y)
-            results[training_size][c - 10][gamma - 10] = score
-            print(f"|{c - 10}\t{gamma - 10}| Score: {score}")
+    indices = random.sample(range(1, train_x.shape[0] - 10000), floor((train_x.shape[0] - 10000)/training_size))
 
-        np.savetxt(f"{training_size}.csv", results[training_size])
+    data = {}
+    # 10k examples are reserved for validation
+    data["X_validation"], data["y_validation"] = train_x[:-10000], train_y[:-10000]
+    data["X"], data["y"] = train_x[indices], train_y[indices]
+
+
+    parameters = {   
+            "C" : { "max" : 10, "min" : -10 },
+            "gamma" : { "max" : 10, "min" : -10 }
+        }
+    
+    dataset = init_dataset(obj_function, parameters, data, [64, 32, 16, 8])
+
+
+
+    # fit Gaussian Process Regressors for f(x, s) and c(x, s) based on data
+    # f(x, s) is the score of the regressor/classifier
+    # c(x, s) is the cost (meaning time) of the function evaluation given configuration and data
     
 
 
