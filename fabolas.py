@@ -77,7 +77,7 @@ def init_dataset(obj_function, parameters, dataset, sizes, initial_points=10):
     for s in sizes:
         for c in configurations:
             score, time = obj_function(configuration, data)
-            dataset.add(configuration, training_size, score, time)
+            dataset.add((configuration, training_size, score, time))
 
     return dataset
 
@@ -88,39 +88,55 @@ def acquisition_function():
     return configuration, training_size
 
 def load_dataset():
-    
-    return data
-
-def main():
-    #dataset = init_dataset(obj_function, parameters, dataset, dataset_subsets_size)
-    dataset = []
     (train_x, train_y), (test_x, test_y) = mnist.load_data()
 
     train_x = train_x.reshape(train_x.shape[0], train_x.shape[1] * train_x.shape[2])
     test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
 
+    data = {}
+    # last 10k examples are reserved for validation
+    data["X_validation"], data["y_validation"] = train_x[-10000:], train_y[-10000:]
+    data["X"], data["y"] = train_x[:-10000], train_y[:-10000]
+    data["X_test"], data["y_test"] = test_x, test_y
+
+    return data
+
+def main():
+    max_iterations = 10
+    dataset = []
+    
     configuration, training_size = acquisition_function()
 
     indices = random.sample(range(1, train_x.shape[0] - 10000), floor((train_x.shape[0] - 10000)/training_size))
-
-    data = {}
-    # 10k examples are reserved for validation
-    data["X_validation"], data["y_validation"] = train_x[:-10000], train_y[:-10000]
-    data["X"], data["y"] = train_x[indices], train_y[indices]
-
 
     parameters = {   
             "C" : { "max" : 10, "min" : -10 },
             "gamma" : { "max" : 10, "min" : -10 }
         }
+
+    data = load_dataset()
     
     dataset = init_dataset(obj_function, parameters, data, [64, 32, 16, 8])
 
+    for it in range(max_iterations):
+        print(f"Iteration {it}/{max_iterations}")
+        # fit Gaussian Process Regressors for f(x, s) and c(x, s) based on data
+        # f(x, s) is the score of the regressor/classifier
+        # c(x, s) is the cost (meaning time) of the function evaluation given configuration and data
 
+        # Obtain an appropriate configuration and size from the acquisition function
+        configuration, training_size = acquisition_function()
 
-    # fit Gaussian Process Regressors for f(x, s) and c(x, s) based on data
-    # f(x, s) is the score of the regressor/classifier
-    # c(x, s) is the cost (meaning time) of the function evaluation given configuration and data
+        # TODO provide a subset of training set
+        data = []
+
+        # Evaluate the function
+        score, time = obj_function(configuration, data)
+
+        # Collect result and augment the dataset
+        dataset.append((configuration, training_size, score, time))
+
+        # TODO choose the estimate for x based on the loss predicted for s = 1 on the entire dataset
     
 
 
