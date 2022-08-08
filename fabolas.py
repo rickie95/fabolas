@@ -39,7 +39,8 @@ def obj_function(configuration, data):
     startTime = time.time()
 
     # Do thing
-    regressor = svm.SVC(C=configuration["C"], gamma=configuration["gamma"], kernel="rbf").fit(data["X"], data["y"])
+    regressor = svm.SVC(C=configuration["C"], gamma=configuration["gamma"], kernel="rbf")
+    regressor.fit(data["X"][data["subset"]], data["y"][data["subset"]])
     score = regressor.score(data["X_validation"], data["y_validation"])
 
     executionTime = time.time() - startTime
@@ -47,7 +48,7 @@ def obj_function(configuration, data):
     return score, executionTime
 
 
-def init_dataset(obj_function, parameters, dataset, sizes, initial_points=10):
+def init_dataset(obj_function, parameters, data, sizes, initial_points=10):
     """
     Evaluates the obj function with K samples of the parameter space for each subset size.
 
@@ -64,20 +65,26 @@ def init_dataset(obj_function, parameters, dataset, sizes, initial_points=10):
     - sizes: fractions of original dataset to consider
         eg. [128, 64, 2, 1] -> 1/128, 1/64, 1/2, 1
     """
-
+    dataset = []
     # Generate initial configurations
     configurations = []
     for i in range(initial_points):
         config = {}
         for p in parameters:
-            config[p] = random.choice(range(parameters[p]["min"], parameters[p]["max"] + 1))
+            value = random.choice(range(parameters[p]["min"], parameters[p]["max"] + 1))
+            config[p] = parameters[p]["transformation"](value)
         configurations.append(config)
 
+    print(f"Evaluating {initial_points} configurations over {len(sizes)} dataset sizes. Total initial points: {initial_points * len(sizes)}")
     # For each training subset size, evaluate the function over all generated configurations
+    iteration = 0
     for s in sizes:
+        data["subset"] = random.sample(range(1, data["X"].shape[0]), floor((data["y"].shape[0])/s))
         for c in configurations:
-            score, time = obj_function(configuration, data)
-            dataset.add((configuration, training_size, score, time))
+            score, time = obj_function(c, data)
+            dataset.append((c, s, score, time))
+            iteration = iteration + 1
+            print(f"{iteration}/{initial_points * len(sizes)}. Score: {score}, time: {time}")
 
     return dataset
 
@@ -107,16 +114,17 @@ def main():
     
     configuration, training_size = acquisition_function()
 
-    indices = random.sample(range(1, train_x.shape[0] - 10000), floor((train_x.shape[0] - 10000)/training_size))
-
     parameters = {   
-            "C" : { "max" : 10, "min" : -10 },
-            "gamma" : { "max" : 10, "min" : -10 }
+            "C" : { "max" : 10, "min" : -10, "transformation": lambda x: e**(x) },
+            "gamma" : { "max" : 10, "min" : -10, "transformation": lambda x: e**(x)}
         }
 
+    print("Loading dataset..")
     data = load_dataset()
     
     dataset = init_dataset(obj_function, parameters, data, [64, 32, 16, 8])
+
+    print("Dataset initialized. Starting main procedure..")
 
     for it in range(max_iterations):
         print(f"Iteration {it}/{max_iterations}")
