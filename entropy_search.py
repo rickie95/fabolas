@@ -15,7 +15,7 @@ def sample_hypers(X, y):
     # noise variance = horseshoe with length 0.1
     
     cov = 1
-    kernel = cov * Matern(length_scale=1) + WhiteKernel()
+    kernel = cov * Matern() + WhiteKernel()
     hyper_distribution = GaussianProcessRegressor(kernel=kernel)
     hyper_distribution.fit(X, y)
 
@@ -48,21 +48,34 @@ def sample_hypers(X, y):
     sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations, progress=True)
     return sampler.chain[:, -1]
 
+def expected_improvement(mean, covariance, y_values):
+    y_max = y_values.max()
+
+    u = (mean - y_max) / sigma
+    ei = 0 # FIXME
+
+    return ei
 
 def entropy_search(dataset):
     # K samples with mcmc over GP hyperparameters: lambda, covariance amplitude for Matérn kernel + noise variance
     hyperparameters = sample_hypers()
+    n_gen_samples = 20
 
     Omega = []
     for hyper in hyperparameters:
-        # fit GP Regressor M with hyper
-        # sample Z point from M
+        cov, lamb, noise = theta
+        kernel = cov * Matern(length_scale=lamb) + WhiteKernel(noise_level=noise)
+        regressor = GaussianProcessRegressor(kernel=kernel).fit(X, y)
+        # sample Z point from M and get predictive mean + covariance
+        X_samples = np.random.rand((n_gen_samples, X.shape[0]))
+        mean, cov = regressor.predict(X_samples, return_cov=True)
         # compute their Expected Improvement
-        # get mean and cov_matrix from M
+        exp_improvement = expected_improvement(mean, cov, y_samples)
+
         p_min[i] = compute_pmin(mean, cov_matrix)
         
         # generate P noise vectors from a Gaussian(0, I_Z)
-        innovations = [ ]
+        innovations = []
         Omega.append(innovations)
 
     return information_gain()
