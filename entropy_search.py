@@ -1,24 +1,29 @@
 import emcee
 import numpy as np
 import scipy
-import tensorflow_probability as tfp
+from tensorflow_probability import distributions as tfp
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern
+from sklearn.gaussian_process.kernels import Matern, WhiteKernel
+import math
 
-def sample_hypers():
+covariance_prior_mean, covariance_prior_sigma = 1, 0
+
+def sample_hypers(X, y):
     # Priors:
     # lambda = uniform [-10, 2]
     # covariance amplitude = lognormal(0, 1)
     # noise variance = horseshoe with length 0.1
-    nwalkers, ndim, iterations = 100, 3, 50
-    kernel = Matern(length_scale=1) # FIXME
+    
+    cov = 1
+    kernel = cov * Matern(length_scale=1) + WhiteKernel()
     hyper_distribution = GaussianProcessRegressor(kernel=kernel)
+    hyper_distribution.fit(X, y)
 
     def log_prob(theta):
         """
         Loglikelihood of the current distribution over hypers + prior
         """
-        lamb, cov, noise = theta
+        cov, lamb, noise = theta
 
         prior = 0
 
@@ -27,18 +32,21 @@ def sample_hypers():
             return -np.inf
 
         # Log probability for lognormal distribution
-        prior += scipy.stats.lognorm.logpdf(cov, 0, loc=1)
+        prior += scipy.stats.lognorm.logpdf(cov, covariance_prior_mean, covariance_prior_sigma)
 
         # Horseshoe 
-        prior += tfp.distributions.Horseshoe(scale=0.1).log_prob(noise)
+        prior += tfp.Horseshoe(scale=0.1).log_prob(noise).numpy()
 
         # Compute log likelihood of the current distribution with proposed values
-        prob = hyper_distribution.log_marginal_likelihood(theta=[lamb, cov])
-        return prior
 
+        prob = hyper_distribution.log_marginal_likelihood(theta=[cov, lamb, noise])
+
+        return prior + prob
+
+    nwalkers, ndim, iterations = 20, kernel.n_dims, 50
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob)
-    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations)
-    sampler.chain[:, -1]
+    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations, progress=True)
+    return sampler.chain[:, -1]
 
 
 def entropy_search(dataset):
@@ -59,5 +67,3 @@ def entropy_search(dataset):
 
     return information_gain()
 
-if __name__ == "__main__":
-    sample_hypers()
