@@ -99,7 +99,7 @@ def compute_innovations(x, model, representer_points, variance, noise):
         - `d_mu`
         - `d_sigma`
     """
-    var_noise = 0 # FIXME find the correct value in the paper
+    var_noise = 0.5*10**(-3) # the noise is estimated as very little in comparison to the GP variance
     # Compute the correlation matrix and get the element corresponding to x
     _, correlation_x_r = model.predict(np.concatenate(x, representer_points), return_cov=True)[-1, :-1]
     d_mu = np.convolve(np.convolve(correlation_x_r, variance), np.dot(np.linalg.cholesky(variance + var_noise), noise))
