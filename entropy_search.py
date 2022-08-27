@@ -61,7 +61,7 @@ def sample_hypers(X, y):
 
     nwalkers, ndim, iterations = 20, kernel.n_dims, 50
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
-    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations, progress=True)
+    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations)
     return sampler.chain[:, -1]
 
 def expected_improvement(mean, covariance, y_values):
@@ -97,24 +97,26 @@ def compute_innovations(x, model, representer_points, variance, noise):
 
         ### Parameters
         - `x`: point to be "innovated"
-            - np.array(N,)
+            - np.array(1, D)
         - `model`: Gaussian Process
         - `representer_points`: representer points of `model`
+            - np.array(P, D) where P is the number of rep points
         - `variance`: variance of `x` wrt `model`
+            - np.array(1, 1)
         - `noise`: noise vector
-            - np.array(N,)
+            - np.array(1, N)
 
         ### Returns
         - `d_mu`
         - `d_sigma`
     """
-    var_noise = 0.5*10**(-3) # the noise is estimated as very little in comparison to the GP variance
+    var_noise = np.array([[0.5*10**(-4)]]) # the noise is estimated as very little in comparison to the GP variance
     # Compute the correlation matrix and get the element corresponding to x
     _, correlation_x_r = model.predict(np.concatenate((x, representer_points)), return_cov=True)
-    correlation_x_r = correlation_x_r[-1, :-1]
-    d_mu = np.convolve(np.convolve(correlation_x_r, variance), np.dot(np.linalg.cholesky(variance + var_noise), noise))
-    # FIXME Cholesky decomposition must be computed on a matrix NxN, but `variance` is a vector
-    d_sigma = np.convolve(np.convolve(correlation_x_r, variance), np.transpose(correlation_x_r))
+    correlation_x_r = (correlation_x_r[-1, :-1]).reshape(-1, 1) # vector (n_rep , 1)
+    corr_x_r_variance = np.dot(correlation_x_r, np.linalg.inv(variance))
+    d_mu = np.dot(corr_x_r_variance, np.linalg.cholesky(variance + var_noise))
+    d_sigma = corr_x_r_variance * correlation_x_r.T
 
     return d_mu, d_sigma
 
@@ -123,7 +125,7 @@ def entropy_search(dataset):
     print("Sampling hypeparameters..")
     # K samples with mcmc over GP hyperparameters: lambda, covariance amplitude for Matérn kernel + noise variance
     hyperparameters = sample_hypers(dataset["X"], dataset["y"])
-    n_gen_samples = 50
+    n_gen_samples = 20
     P = 20
 
     Omega = []
@@ -131,6 +133,8 @@ def entropy_search(dataset):
     U = []
     models = []
     representers = []
+    means = []
+    covariances = []
 
     for hyper in hyperparameters:
         cov, lamb, noise = np.e**(hyper) # Convert from log scale
@@ -142,7 +146,8 @@ def entropy_search(dataset):
         X_samples = np.random.rand(n_gen_samples, dataset["X"].shape[1])
         representers.append(X_samples)
         mean, cov = regressor.predict(X_samples, return_cov=True)
-
+        means.append(mean)
+        covariances.append(cov)
         # compute their Expected Improvement
         print("Computing EI...")
         exp_improvement = expected_improvement(mean, cov, regressor.sample_y(X_samples))
@@ -159,7 +164,7 @@ def entropy_search(dataset):
         print("Generating innovations..")
         for _ in range(P):
             # Generate a gaussian noise vector
-            innovations.append(sts.norm.ppf(np.linspace(0, 1, P + 2)[1:-1]))
+            innovations.append(np.array(sts.norm.ppf(np.linspace(0, 1, P + 2)[1:-1])))
 
         Omega.append(innovations)
 
@@ -171,15 +176,15 @@ def entropy_search(dataset):
         a = 0
         for i, model in enumerate(models):
             _, testpoint_var = model.predict(test_point.reshape(1, -1), return_cov=True)
-
-            for _ in range(P):
-                d_mu, d_sigma = compute_innovations(test_point.reshape(1, -1), model, representers[i], testpoint_var, Omega[i])
+            # vectorize
+            for p in range(P):
+                d_mu, d_sigma = compute_innovations(test_point.reshape(1, -1), model, representers[i], testpoint_var, Omega[i][p])
 
                 # Compute pmin from the updated posterior
-                q_min = compute_pmin(mean + d_mu, cov + d_sigma)
+                q_min = compute_pmin(means[i] + d_mu.reshape(-1), covariances[i] + d_sigma)
 
-                d_entropy = - np.sum(q_min * np.log(q_min) + U[i]) + \
-                    np.sum(p_min[i] * (np.log(p_min[i] + U[i])))
+                d_entropy = - np.sum(np.exp(q_min) * (q_min + U[i])) + \
+                    np.sum(np.exp(p_min[i]) * (p_min[i] + U[i]))
 
                 a += 1/P * d_entropy
 
