@@ -15,7 +15,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import zero_one_loss
 from tensorflow.keras.datasets import mnist
 import math
-
+import logging
 
 covariance_prior_mean, covariance_prior_sigma = 1, 0
 
@@ -66,6 +66,9 @@ def sample_hypers(X, y):
 
 def expected_improvement(mean, covariance, y_values):
     y_max = y_values.max()
+
+    if covariance.all() == 0:
+        logging.warning("Covariance is zero.")
 
     u = (mean - y_max) / covariance
     ei = covariance * (u * sts.norm.cdf(u) + sts.norm.pdf(u))
@@ -122,7 +125,7 @@ def compute_innovations(x, model, representer_points, variance, noise):
 
 def entropy_search(dataset):
     
-    print("Sampling hypeparameters..")
+    logging.info("Sampling hypeparameters..")
     # K samples with mcmc over GP hyperparameters: lambda, covariance amplitude for Matérn kernel + noise variance
     hyperparameters = sample_hypers(dataset["X"], dataset["y"])
     n_gen_samples = 20
@@ -149,19 +152,18 @@ def entropy_search(dataset):
         means.append(mean)
         covariances.append(cov)
         # compute their Expected Improvement
-        print("Computing EI...")
+        logging.debug("Computing EI...")
         exp_improvement = expected_improvement(mean, cov, regressor.sample_y(X_samples))
         U.append(exp_improvement)
 
         # Compute p_min using EPMGP
-        print("Computing pMin")
+        logging.debug("Computing pMin")
         p_min.append(compute_pmin(mean, cov))
         
         # generate P noise vectors from a Gaussian(0, I_Z)
-        # FIXME: noise vectors should not be deterministic
         # also why save'em in memory when they can be generated on the fly?
         innovations = []
-        print("Generating innovations..")
+        logging.debug("Generating innovations..")
         for _ in range(P):
             # Generate a gaussian noise vector
             innovations.append(np.array(sts.norm.ppf(np.linspace(0, 1, P + 2)[1:-1])))
@@ -188,26 +190,31 @@ def entropy_search(dataset):
 
                 a += 1/P * d_entropy
 
-        print(f"IG: {1/len(models) * a}")  
+        logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")  
         return 1/len(models) * a
 
     # maximize information gain => minimize -information_gain()
     # FIXME: find a better strategy for the initial guess/guesses. 
     # Maybe random + last good configuration?
-    print("Ready to optimize Information Gain")
-    return minimize(fun=lambda x: -information_gain(x), x0=dataset["X"][np.argmax(dataset["y"])])
+    logging.info("Ready to optimize Information Gain")
+    return minimize(
+        fun=lambda x: -information_gain(x), 
+        x0=dataset["X"][np.argmax(dataset["y"])],
+        method='L-BFGS-B',
+        bounds=[(-10, 10), (-10, 10)],
+        options={'maxiter': 10, 'maxfun': 10})
 
 def obj_function(configuration, dataset):
     c, gamma = configuration
-    classifier = SVC(C=c, gamma=gamma).fit(dataset["X"], dataset["y"])
+    classifier = SVC(C=math.e**c, gamma=math.e**gamma).fit(dataset["X"], dataset["y"])
     predictions = classifier.predict(dataset["X_test"])
     return zero_one_loss(dataset["y_test"], predictions)
 
 
 def generate_prior(obj_function, dataset):
 
-    C = np.array([1, 10, 100])
-    gamma = np.array([10**(-3), 10**(-5), 10**(-7)])
+    C = np.array([-5, 0, 5])
+    gamma = np.array([-5, 0, 5])
 
     x_values, y_values = [], []
 
@@ -252,7 +259,7 @@ def main():
     # or generated/sampled by some fancy strategy
     dataset = {}
     dataset["X"], dataset["y"] = generate_prior(obj_function, data)
-    print("Prior generated")
+    logging.info("Prior generated")
 
     # Optimization loop can finally start. The stopping criteria is
     # based on a fixed number of iterations but could take in account
@@ -261,16 +268,16 @@ def main():
     for _ in range(iterations):
 
         # Find the next candidate
-        candidate = entropy_search(dataset)
+        result = entropy_search(dataset)
 
-        print("Evaluating function..")
+        logging.info(f"Evaluating function at {result.x[0]}")
         function_time = time.time()
         # Evaluate the function
-        y = obj_function(candidate, data)
+        y = obj_function(result.x[0], data)
         function_time = time.time() - function_time
 
         performance = "-" if best_y is not None else str((y / best_y - 1)*100 )
-        print(f"Function value: {y} ({performance}%), {function_time}s")
+        logging.info(f"Function value: {y} ({performance}%), {function_time}s")
 
         # Save the results
         dataset["X"].append(candidate)
@@ -283,8 +290,9 @@ def main():
     
 
     # Optimization loop has ended, print the results
-    print(f"Best score {best_y}")
-    print(f"with configuration: {str(best_x)}")
+    logging.info(f"Best score {best_y}")
+    logging.info(f"with configuration: {str(best_x)}")
 
 if __name__ == "__main__":
+    logging.basicConfig(format='%(process)s - %(levelname)s - %(message)s', level=logging.INFO)
     main()
