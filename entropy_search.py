@@ -44,7 +44,7 @@ def sample_hypers(X, y):
         prior = 0
 
         # Log likelihood for lambda is 0 when lambda is inside its bounds
-        if not -10 < lamb < 2:
+        if not -9 < lamb < 2:
             return -np.inf
 
         # Log probability for lognormal distribution
@@ -61,7 +61,7 @@ def sample_hypers(X, y):
 
     nwalkers, ndim, iterations = 20, kernel.n_dims, 50
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
-    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations)
+    sampler.run_mcmc(np.random.rand(nwalkers, ndim), iterations, rstate0=np.random.get_state())
     return sampler.chain[:, -1]
 
 def expected_improvement(mean, covariance, y_values):
@@ -77,7 +77,7 @@ def expected_improvement(mean, covariance, y_values):
 
     return ei
 
-def compute_pmin(mu, sigma):
+def compute_pmin(mu: np.array, sigma: np.array, derivatives=False):
     """
         Compute p_min using EPMGP from GPyOpt
 
@@ -86,15 +86,20 @@ def compute_pmin(mu, sigma):
             - `np.array(N,)`
         - `sigma`: covariance matrix
             - `np.array(N, N)`
+        - `derivatives`: enable derivatives
+            - bool
 
     
         ### Returns:
-        - `pmin`: distribution
+        - `pmin`: log distribution
             - np.array(N, 1)
+        - `dLogP_dMu`: derivative respect to mean
+        - `dLogP_dSigma`: derivative respect to covariance
+        - `dLogP_dMu_dMu`
     """
-    return epmgp.joint_min(mu, sigma)
+    return epmgp.joint_min(mu, sigma, with_derivatives=derivatives)
 
-def compute_innovations(x, model, representer_points, variance, noise):
+def compute_innovations(x, model, representer_points, variance):
     """
         Returns possible innovations for point 'x'
 
@@ -128,7 +133,7 @@ def entropy_search(dataset):
     logging.info("Sampling hypeparameters..")
     # K samples with mcmc over GP hyperparameters: lambda, covariance amplitude for Matérn kernel + noise variance
     hyperparameters = sample_hypers(dataset["X"], dataset["y"])
-    n_gen_samples = 20
+    n_gen_samples = 30
     P = 20
 
     Omega = []
@@ -140,13 +145,13 @@ def entropy_search(dataset):
     covariances = []
 
     for hyper in hyperparameters:
-        cov, lamb, noise = np.e**(hyper) # Convert from log scale
-        kernel = cov * Matern(length_scale=lamb) + WhiteKernel(noise_level=noise)
+        kernel_cov, lamb, noise = hyper # Convert from log scale
+        kernel = kernel_cov * Matern(length_scale=math.e**lamb) + WhiteKernel(noise_level=noise)
         regressor = GaussianProcessRegressor(kernel=kernel, optimizer=None).fit(dataset["X"], dataset["y"])
         models.append(regressor)
 
         # sample Z point from M and get predictive mean + covariance
-        X_samples = np.random.rand(n_gen_samples, dataset["X"].shape[1])
+        X_samples = np.random.normal(size=(n_gen_samples, dataset["X"].shape[1])) # Should I sample from all the dataset space?
         representers.append(X_samples)
         mean, cov = regressor.predict(X_samples, return_cov=True)
         means.append(mean)
@@ -158,15 +163,16 @@ def entropy_search(dataset):
 
         # Compute p_min using EPMGP
         logging.debug("Computing pMin")
-        p_min.append(compute_pmin(mean, cov))
+        p_min.append(compute_pmin(mean, cov, derivatives=True))
         
         # generate P noise vectors from a Gaussian(0, I_Z)
-        # also why save'em in memory when they can be generated on the fly?
+        # Q: Why save'em in memory when they can be generated on the fly?
+        # A: This way the noise is the same for all IG iterations
         innovations = []
         logging.debug("Generating innovations..")
         for _ in range(P):
             # Generate a gaussian noise vector
-            innovations.append(np.array(sts.norm.ppf(np.linspace(0, 1, P + 2)[1:-1])))
+            innovations.append(np.random.normal(size=n_gen_samples))
 
         Omega.append(innovations)
 
@@ -180,13 +186,19 @@ def entropy_search(dataset):
             _, testpoint_var = model.predict(test_point.reshape(1, -1), return_cov=True)
             # vectorize
             for p in range(P):
-                d_mu, d_sigma = compute_innovations(test_point.reshape(1, -1), model, representers[i], testpoint_var, Omega[i][p])
+                d_mu, d_sigma = compute_innovations(test_point.reshape(1, -1), model, representers[i], testpoint_var)
 
                 # Compute pmin from the updated posterior
-                q_min = compute_pmin(means[i] + d_mu.reshape(-1), covariances[i] + d_sigma)
+                #q_min = compute_pmin(means[i] + d_mu.reshape(-1), covariances[i] + d_sigma)
+                trace = np.sum(np.sum(np.multiply(p_min[i][3], np.reshape(
+                        d_mu * d_mu.T, (1, d_mu.shape[0], d_mu.shape[0]))), 2), 1)[:, np.newaxis]
+                deterministic_change = np.dot(p_min[i][2], d_sigma[np.tril(np.ones((d_sigma.shape))).astype(bool), np.newaxis]) + 1/2 * trace
+                
+                stochastic_change = p_min[i][1] * d_mu * Omega[i][p]
+                q_min = p_min[i][0] + deterministic_change + stochastic_change
 
                 d_entropy = - np.sum(np.exp(q_min) * (q_min + U[i])) + \
-                    np.sum(np.exp(p_min[i]) * (p_min[i] + U[i]))
+                    np.sum(np.exp(p_min[i][0]) * (p_min[i][0] + U[i]))
 
                 a += 1/P * d_entropy
 
@@ -270,18 +282,18 @@ def main():
         # Find the next candidate
         result = entropy_search(dataset)
 
-        logging.info(f"Evaluating function at {result.x[0]}")
+        logging.info(f"Evaluating function at {result.x}")
         function_time = time.time()
         # Evaluate the function
-        y = obj_function(result.x[0], data)
+        y = obj_function(result.x, data)
         function_time = time.time() - function_time
 
-        performance = "-" if best_y is not None else str((y / best_y - 1)*100 )
+        performance = "-" if best_y is None else str((y / best_y - 1)*100 )
         logging.info(f"Function value: {y} ({performance}%), {function_time}s")
 
         # Save the results
-        dataset["X"].append(candidate)
-        dataset["y"].append(y)
+        dataset["X"] = np.vstack([dataset["X"], result.x])
+        dataset["y"] = np.append(dataset["y"], np.array([y]))
 
         # Save the best candidate so far
         best_index = np.argmin(dataset["y"])
@@ -296,3 +308,5 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(format='%(process)s - %(levelname)s - %(message)s', level=logging.INFO)
     main()
+
+
