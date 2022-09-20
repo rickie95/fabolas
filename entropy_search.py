@@ -15,9 +15,10 @@ from sklearn.gaussian_process.kernels import  WhiteKernel
 from ard import AutomaticRelevanceDetermination
 from sklearn.svm import SVC
 from sklearn.metrics import zero_one_loss
-from tensorflow.keras.datasets import mnist
+from sklearn.model_selection import GridSearchCV
 import math
 import logging
+import mnist
 
 covariance_prior_mean, covariance_prior_sigma = 1, 0
 
@@ -72,7 +73,7 @@ def sample_hypers(X, y, K=20):
 
         return prior + prob
 
-    nwalkers, ndim, iterations = K, kernel.n_dims, 1000
+    nwalkers, ndim, iterations = K, kernel.n_dims, 500
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
     state = sampler.run_mcmc(np.random.rand(nwalkers, ndim), 100, rstate0=np.random.get_state())
     sampler.reset()
@@ -203,6 +204,12 @@ def entropy_search(dataset):
         testpoint_var = np.zeros([len(models)])
         for i,m in enumerate(models):
             testpoint_mu[i], testpoint_var[i] = m.predict(test_point.reshape(1, -1), return_cov=True)
+
+        while np.isnan(testpoint_mu.sum()) or np.isnan(testpoint_var.sum()):
+            faulty = [x or y for x,y in zip(np.isnan(testpoint_mu), np.isnan(testpoint_var))]
+            for i, m in enumerate(models):
+                if faulty[i]:
+                    testpoint_mu[i], testpoint_var[i] = m.predict(test_point.reshape(1, -1), return_cov=True)
         
         # **Predictive** variance (Hutter, 2013 - Algorithm Runtime Prediction: Methods & Evaluation)
         # Section 4.2: Scaling to large amounts of data with approximate gaussian processes
@@ -232,49 +239,48 @@ def entropy_search(dataset):
                     logging.warning("Cannot compute Information Gain with this model")
 
         logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")  
-        return 1/len(models) * a
+        return - (1/len(models) * a)
 
     # maximize information gain => minimize -information_gain()
     # FIXME: find a better strategy for the initial guess/guesses. 
     # Maybe random + last good configuration?
     logging.info("Ready to optimize Information Gain")
     return minimize(
-        fun=lambda x: -information_gain(x), 
+        fun=information_gain, 
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
         bounds=[(-10, 10), (-10, 10)],
-        options={'maxiter': 10, 'maxfun': 10})
+        #options={'maxiter': 10, 'maxfun': 10}
+        )
 
 def obj_function(configuration, dataset):
     c, gamma = configuration
-    classifier = SVC(C=math.e**c, gamma=math.e**gamma).fit(dataset["X"], dataset["y"])
+    classifier = SVC(C=10**c, gamma=10**gamma).fit(dataset["X"], dataset["y"])
     predictions = classifier.predict(dataset["X_test"])
-    return zero_one_loss(dataset["y_test"], predictions)
+    score = 1 - zero_one_loss(dataset["y_test"], predictions)
+    return score
 
 
-def generate_prior(obj_function, dataset):
+def generate_prior(data):
 
-    C = np.array([-8, 0, 8])
-    gamma = np.array([-8, 0, 8])
+    C_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
+    gamma_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
 
-    x_values, y_values = [], [
-        0.71234,  0.71234, 0.2154, 
-        0.71234, 0.71234, 0.6523, 
-        0.91266, 0.81256, 0.71234
-        ]
+    grid = GridSearchCV(SVC(kernel="rbf"), {'C': C_values, 'gamma' : gamma_values}, n_jobs=-1, verbose=3, cv=3)
+    grid.fit(data["X"], data["y"])
+    predictions = grid.predict(data["X_test"])
 
-    for c in C:
-        for g in gamma:
-            #y = obj_function((c,g), dataset)
-            x_values.append((c,g))
-            #y_values.append(y)
+    x_values = np.log(np.array([(params["C"], params["gamma"]) for params in grid.cv_results_["params"]]))
+    y_values = np.array(grid.cv_results_["mean_test_score"])
 
-    return np.array(x_values), np.array(y_values)
+    return x_values, y_values 
 
 def load_mnist(training_size):
     dataset = {}
 
-    (train_x, train_y), (test_x, test_y) = mnist.load_data()
+    train_x, train_y = mnist.train_images(), mnist.train_labels()
+    test_x, test_y = mnist.test_images(), mnist.test_labels()
+
     train_x = train_x.reshape(train_x.shape[0], train_x.shape[1] * train_x.shape[2])
     test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
 
@@ -292,9 +298,11 @@ def main():
     """
         Test Entropy Search with a simple "complex" function.
     """
-    iterations = 30
+    iterations = 10
 
+    logging.info("Loading dataset...")
     data = load_mnist(128)
+    logging.info("Dataset loaded.")
 
     best_x = None
     best_y = None
@@ -303,8 +311,12 @@ def main():
     # derived by some knowledge about the function
     # or generated/sampled by some fancy strategy
     dataset = {}
-    dataset["X"], dataset["y"] = generate_prior(obj_function, data)
+    dataset["X"], dataset["y"] = generate_prior(data)
     logging.info("Prior generated")
+
+    best_index = np.argmax(dataset["y"])
+    best_x = dataset["X"][best_index]
+    best_y = dataset["y"][best_index]
 
     # Optimization loop can finally start. The stopping criteria is
     # based on a fixed number of iterations but could take in account
@@ -329,7 +341,7 @@ def main():
         dataset["y"] = np.append(dataset["y"], np.array([y]))
 
         # Save the best candidate so far
-        best_index = np.argmin(dataset["y"])
+        best_index = np.argmax(dataset["y"])
         best_x = dataset["X"][best_index]
         best_y = dataset["y"][best_index]
     
