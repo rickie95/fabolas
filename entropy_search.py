@@ -255,10 +255,10 @@ def entropy_search(dataset):
 
 def obj_function(configuration, dataset):
     c, gamma = configuration
-    classifier = SVC(C=10**c, gamma=10**gamma).fit(dataset["X"], dataset["y"])
-    predictions = classifier.predict(dataset["X_test"])
-    score = 1 - zero_one_loss(dataset["y_test"], predictions)
-    return score
+    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [10**c], 'gamma' : [10**gamma]}, n_jobs=-1, verbose=3, cv=5)
+    grid.fit(data["X"], data["y"])
+    predictions = grid.predict(data["X_test"])
+    return grid.best_score_
 
 
 def generate_prior(data):
