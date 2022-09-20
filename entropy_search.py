@@ -253,11 +253,12 @@ def entropy_search(dataset):
         #options={'maxiter': 10, 'maxfun': 10}
         )
 
-def obj_function(configuration, dataset):
+def obj_function(configuration, dataset=None):
+    if dataset is None:
+        dataset = load_mnist(1)
     c, gamma = configuration
     grid = GridSearchCV(SVC(kernel="rbf"), {'C': [10**c], 'gamma' : [10**gamma]}, n_jobs=-1, verbose=3, cv=5)
-    grid.fit(data["X"], data["y"])
-    predictions = grid.predict(data["X_test"])
+    grid.fit(dataset["X"], dataset["y"])
     return grid.best_score_
 
 
@@ -270,7 +271,7 @@ def generate_prior(data):
     grid.fit(data["X"], data["y"])
     predictions = grid.predict(data["X_test"])
 
-    x_values = np.log(np.array([(params["C"], params["gamma"]) for params in grid.cv_results_["params"]]))
+    x_values = np.log10(np.array([(params["C"], params["gamma"]) for params in grid.cv_results_["params"]]))
     y_values = np.array(grid.cv_results_["mean_test_score"])
 
     return x_values, y_values 
@@ -284,10 +285,13 @@ def load_mnist(training_size):
     train_x = train_x.reshape(train_x.shape[0], train_x.shape[1] * train_x.shape[2])
     test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
 
-    indices = sample(range(1, train_x.shape[0]), math.floor(train_x.shape[0]/training_size))
-
-    dataset["X"] = train_x[indices]
-    dataset["y"] = train_y[indices]
+    if training_size > 1:
+        indices = sample(range(1, train_x.shape[0]), math.floor(train_x.shape[0]/training_size))
+        dataset["X"] = train_x[indices]
+        dataset["y"] = train_y[indices]
+    else:
+        dataset["X"] = train_x
+        dataset["y"] = train_y
 
     dataset["X_test"] = test_x
     dataset["y_test"] = test_y
@@ -330,11 +334,11 @@ def main():
         logging.info(f"Evaluating function at {result.x}")
         function_time = time.time()
         # Evaluate the function
-        y = obj_function(result.x, data)
+        y = obj_function(result.x)
         function_time = time.time() - function_time
 
-        performance = "-" if best_y is None else str((y / best_y - 1)*100 )
-        logging.info(f"Function value: {y} ({performance}%), {function_time}s")
+        performance = (y / best_y - 1)*100
+        logging.info(f"Function value: {y} ({('+' if performance > 0 else '')}{'%.5f' % performance} %), {'%.5f' % function_time}s")
 
         # Save the results
         dataset["X"] = np.vstack([dataset["X"], result.x])
