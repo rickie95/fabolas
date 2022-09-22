@@ -1,26 +1,25 @@
-from distutils.command.config import config
-from random import random, sample
-from statistics import correlation
+from random import sample
 from emcee import EnsembleSampler
 import epmgp
 import numpy as np
-import scipy
 import time
 import scipy.stats as sts
 from scipy.optimize import minimize
-#from tensorflow_probability import distributions as tfp
 from horseshoe import Horseshoe
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import  WhiteKernel
+from sklearn.gaussian_process.kernels import WhiteKernel
 from ard import AutomaticRelevanceDetermination
 from sklearn.svm import SVC
-from sklearn.metrics import zero_one_loss
 from sklearn.model_selection import GridSearchCV
+
+from acquisitions import expected_improvement, information_gain
+
 import math
 import logging
 import mnist
 
 covariance_prior_mean, covariance_prior_sigma = 1, 0
+
 
 def sample_hypers(X, y, K=20):
     """
@@ -63,8 +62,7 @@ def sample_hypers(X, y, K=20):
         # Log probability for lognormal distribution
         prior += sts.lognorm.logpdf(cov, covariance_prior_mean, covariance_prior_sigma)
 
-        # Horseshoe 
-        #prior += tfp.Horseshoe(scale=0.1).log_prob(noise).numpy()
+        # Horseshoe
         prior += Horseshoe(scale=0.1).logpdf(noise)
 
         # Compute log likelihood of the current distribution with proposed values
@@ -80,18 +78,6 @@ def sample_hypers(X, y, K=20):
     sampler.run_mcmc(state, iterations)
     return sampler.chain[:, -1]
 
-def expected_improvement(mean, covariance, y_values, exploration=0, ):
-    y_max = y_values.max()
-
-    # Since we need sigma(x) we just use the diagonal
-    variance = np.sqrt(np.diag(covariance))
-
-    u = (mean - y_max - exploration) / variance
-    ei = variance * (u * sts.norm.cdf(u) + sts.norm.pdf(u))
-
-    ei[variance <= 0.] = 0.
-
-    return ei
 
 def compute_pmin(mu: np.array, sigma: np.array, derivatives=False):
     """
@@ -105,7 +91,7 @@ def compute_pmin(mu: np.array, sigma: np.array, derivatives=False):
         - `derivatives`: enable derivatives
             - bool
 
-    
+
         ### Returns:
         - `pmin`: log distribution
             - np.array(N, 1)
@@ -115,44 +101,18 @@ def compute_pmin(mu: np.array, sigma: np.array, derivatives=False):
     """
     return epmgp.joint_min(mu, sigma, with_derivatives=derivatives)
 
-def compute_innovations(x, model, representer_points, variance):
-    """
-        Returns possible innovations for point 'x'
 
-        ### Parameters
-        - `x`: point to be "innovated"
-            - np.array(1, D)
-        - `model`: Gaussian Process
-        - `representer_points`: representer points of `model`
-            - np.array(P, D) where P is the number of rep points
-        - `variance`: variance of `x` wrt `model`
-            - np.array(1, 1)
-        - `noise`: noise vector
-            - np.array(1, N)
-
-        ### Returns
-        - `d_mu`
-        - `d_sigma`
-    """
-    var_noise = np.array([[10**(-4)]]) # the noise is estimated as very little in comparison to the GP variance
-    # Compute the correlation matrix and get the element corresponding to x
-    _, correlation_x_r = model.predict(np.concatenate((x, representer_points)), return_cov=True)
-    correlation_x_r = (correlation_x_r[-1, :-1]).reshape(-1, 1) # vector (n_rep , 1)
-    corr_x_r_variance = np.dot(correlation_x_r, np.linalg.inv(variance))
-    d_mu = np.dot(corr_x_r_variance, np.linalg.cholesky(variance + var_noise))
-    d_sigma = corr_x_r_variance * correlation_x_r.T
-
-    return d_mu, d_sigma
-
-def entropy_search(dataset):
+def entropy_search(dataset, bounds):
     n_hyper_samples = 20    # K parameter
     n_gen_samples = 50      # Z parameter
     n_innovations = 20      # P parameter
-    
+
     logging.info("Sampling hypeparameters..")
-    # K samples with mcmc over GP hyperparameters: lambda, covariance amplitude for Matérn kernel + noise variance
+    # K samples with mcmc over GP hyperparameters:
+    # - lambda
+    # - covariance amplitude for Matérn kernel
+    # - noise variance
     hyperparameters = sample_hypers(dataset["X"], dataset["y"], K=n_hyper_samples)
-    
 
     Omega = []
     p_min = []
@@ -163,13 +123,19 @@ def entropy_search(dataset):
     covariances = []
 
     for hyper in hyperparameters:
-        kernel_cov, lamb, noise = hyper # Convert from log scale
-        kernel = kernel_cov * AutomaticRelevanceDetermination(length_scale=math.e**lamb, nu=5/2) + WhiteKernel(noise_level=abs(noise))
+        kernel_cov, lamb, noise = hyper
+        kernel = kernel_cov * AutomaticRelevanceDetermination(length_scale=math.e**lamb, nu=5/2) + \
+            WhiteKernel(noise_level=abs(noise))
         regressor = GaussianProcessRegressor(kernel=kernel, optimizer=None).fit(dataset["X"], dataset["y"])
         models.append(regressor)
 
         # sample Z point from M and get predictive mean + covariance
-        X_samples = np.random.uniform(low=-10, high=10, size=(n_gen_samples, dataset["X"].shape[1])) # FIXME: sample from the parameter space, using custom function
+        X_samples = np.random.uniform(
+            low=[b[0] for b in bounds],
+            high=[b[1] for b in bounds],
+            size=(n_gen_samples, dataset["X"].shape[1])
+        )
+
         representers.append(X_samples)
         mean, cov = regressor.predict(X_samples, return_cov=True)
         means.append(mean)
@@ -182,7 +148,7 @@ def entropy_search(dataset):
         # Compute p_min using EPMGP
         logging.debug("Computing pMin")
         p_min.append(compute_pmin(mean, cov, derivatives=True))
-        
+
         # generate P noise vectors from a Gaussian(0, I_Z)
         # Q: Why save'em in memory when they can be generated on the fly?
         # A: This way the noise is the same for all IG iterations
@@ -194,70 +160,24 @@ def entropy_search(dataset):
 
         Omega.append(innovations)
 
-    def information_gain(test_point):
-        """
-        Returns the information gain value for `test_point`
-
-        """
-        a, errors = 0, 0
-        testpoint_mu = np.zeros([len(models)])
-        testpoint_var = np.zeros([len(models)])
-        for i,m in enumerate(models):
-            testpoint_mu[i], testpoint_var[i] = m.predict(test_point.reshape(1, -1), return_cov=True)
-
-        while np.isnan(testpoint_mu.sum()) or np.isnan(testpoint_var.sum()):
-            faulty = [x or y for x,y in zip(np.isnan(testpoint_mu), np.isnan(testpoint_var))]
-            for i, m in enumerate(models):
-                if faulty[i]:
-                    testpoint_mu[i], testpoint_var[i] = m.predict(test_point.reshape(1, -1), return_cov=True)
-        
-        # **Predictive** variance (Hutter, 2013 - Algorithm Runtime Prediction: Methods & Evaluation)
-        # Section 4.2: Scaling to large amounts of data with approximate gaussian processes
-        pred_mean_testpoint = testpoint_mu.mean()
-        pred_var_testpoint = (testpoint_var + testpoint_mu**2).mean() - pred_mean_testpoint**2
-
-        for i, model in enumerate(models):
-            # TODO: can it be vectorized?
-            for p in range(n_innovations):
-                d_mu, d_sigma = compute_innovations(test_point.reshape(1, -1), model, representers[i], pred_var_testpoint.reshape(-1, 1))
-
-                # Compute pmin from the updated posterior
-                #q_min = compute_pmin(means[i] + d_mu.reshape(-1), covariances[i] + d_sigma)
-                trace = np.sum(np.sum(np.multiply(p_min[i][3], np.reshape(
-                        d_mu * d_mu.T, (1, d_mu.shape[0], d_mu.shape[0]))), 2), 1)[:, np.newaxis]
-                deterministic_change = np.dot(p_min[i][2], d_sigma[np.tril(np.ones((d_sigma.shape))).astype(bool), np.newaxis]) + 1/2 * trace
-                
-                stochastic_change = p_min[i][1] * d_mu * Omega[i][p]
-                q_min = p_min[i][0] + deterministic_change + stochastic_change
-
-                d_entropy = - np.sum(np.exp(q_min) * (q_min + U[i])) + \
-                    np.sum(np.exp(p_min[i][0]) * (p_min[i][0] + U[i]))
-
-                if d_entropy != np.nan:
-                    a += 1/n_innovations * d_entropy
-                else:
-                    logging.warning("Cannot compute Information Gain with this model")
-
-        logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")  
-        return - (1/len(models) * a)
-
     # maximize information gain => minimize -information_gain()
-    # FIXME: find a better strategy for the initial guess/guesses. 
+    # FIXME: find a better strategy for the initial guess/guesses.
     # Maybe random + last good configuration?
     logging.info("Ready to optimize Information Gain")
     return minimize(
-        fun=information_gain, 
+        fun=information_gain,
+        args=(models, p_min, representers, U, Omega),
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
-        bounds=[(-10, 10), (-10, 10)],
-        #options={'maxiter': 10, 'maxfun': 10}
+        bounds=bounds,
         )
+
 
 def obj_function(configuration, dataset=None):
     if dataset is None:
         dataset = load_mnist(1)
     c, gamma = configuration
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [10**c], 'gamma' : [10**gamma]}, n_jobs=-1, verbose=3, cv=5)
+    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [10**c], 'gamma': [10**gamma]}, n_jobs=-1, verbose=3, cv=5)
     grid.fit(dataset["X"], dataset["y"])
     return grid.best_score_
 
@@ -267,14 +187,15 @@ def generate_prior(data):
     C_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
     gamma_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
 
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': C_values, 'gamma' : gamma_values}, n_jobs=-1, verbose=3, cv=3)
+    grid = GridSearchCV(SVC(kernel="rbf"), {'C': C_values, 'gamma': gamma_values},
+                        n_jobs=-1, verbose=3, cv=3)
     grid.fit(data["X"], data["y"])
-    predictions = grid.predict(data["X_test"])
 
     x_values = np.log10(np.array([(params["C"], params["gamma"]) for params in grid.cv_results_["params"]]))
     y_values = np.array(grid.cv_results_["mean_test_score"])
 
-    return x_values, y_values 
+    return x_values, y_values
+
 
 def load_mnist(training_size):
     dataset = {}
@@ -297,6 +218,7 @@ def load_mnist(training_size):
     dataset["y_test"] = test_y
 
     return dataset
+
 
 def main():
     """
@@ -324,12 +246,12 @@ def main():
 
     # Optimization loop can finally start. The stopping criteria is
     # based on a fixed number of iterations but could take in account
-    # a "min improvement" policy 
+    # a "min improvement" policy
 
     for _ in range(iterations):
 
         # Find the next candidate
-        result = entropy_search(dataset)
+        result = entropy_search(dataset, bounds=[(-10, 10), (-10, 10)])
 
         logging.info(f"Evaluating function at {result.x}")
         function_time = time.time()
@@ -338,7 +260,8 @@ def main():
         function_time = time.time() - function_time
 
         performance = (y / best_y - 1)*100
-        logging.info(f"Function value: {y} ({('+' if performance > 0 else '')}{'%.5f' % performance} %), {'%.5f' % function_time}s")
+        logging.info(f"Function value: {y} ({('+' if performance > 0 else '')}{'%.5f' % performance} %), \
+            {'%.5f' % function_time}s")
 
         # Save the results
         dataset["X"] = np.vstack([dataset["X"], result.x])
@@ -348,14 +271,12 @@ def main():
         best_index = np.argmax(dataset["y"])
         best_x = dataset["X"][best_index]
         best_y = dataset["y"][best_index]
-    
 
     # Optimization loop has ended, print the results
     logging.info(f"Best score {best_y}")
     logging.info(f"with configuration: {str(best_x)}")
 
+
 if __name__ == "__main__":
     logging.basicConfig(format='%(process)s - %(levelname)s - %(message)s', level=logging.INFO)
     main()
-
-
