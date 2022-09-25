@@ -99,3 +99,10 @@ def information_gain(test_point, models, p_min, representers, U, Omega, n_innova
 
     logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")
     return - (1/len(models) * a)
+
+
+def information_gain_cost(test_point, cost_model, models, p_min, representers, U, Omega):
+    overhead_cost = 0.5
+    predicted_cost = cost_model.sample(test_point)
+    cost_factor = 1/(predicted_cost + overhead_cost)
+    return cost_factor * information_gain(test_point, models, p_min, representers, U, Omega)
