@@ -1,22 +1,22 @@
-from random import sample
-from emcee import EnsembleSampler
-import epmgp
-import numpy as np
+import logging
+import math
 import time
+from random import sample
+
+import mnist
+import numpy as np
 import scipy.stats as sts
+from emcee import EnsembleSampler
 from scipy.optimize import minimize
-from horseshoe import Horseshoe
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import WhiteKernel
-from ard import AutomaticRelevanceDetermination
-from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
+from sklearn.svm import SVC
 
+import epmgp
 from acquisitions import expected_improvement, information_gain
-
-import math
-import logging
-import mnist
+from ard import AutomaticRelevanceDetermination
+from horseshoe import Horseshoe
 
 covariance_prior_mean, covariance_prior_sigma = 1, 0
 
@@ -207,7 +207,7 @@ def load_mnist(training_size):
     test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
 
     if training_size > 1:
-        indices = sample(range(1, train_x.shape[0]), math.floor(train_x.shape[0]/training_size))
+        indices = sample(range(train_x.shape[0]), math.floor(train_x.shape[0]/training_size))
         dataset["X"] = train_x[indices]
         dataset["y"] = train_y[indices]
     else:
