@@ -8,14 +8,13 @@ import numpy as np
 import scipy.stats as sts
 from emcee import EnsembleSampler
 from scipy.optimize import minimize
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import WhiteKernel
 from sklearn.model_selection import GridSearchCV
+from george.gp import GP
+from george.kernels import Matern52Kernel
 from sklearn.svm import SVC
 
 import epmgp
 from acquisitions import expected_improvement, information_gain
-from ard import AutomaticRelevanceDetermination
 from horseshoe import Horseshoe
 
 covariance_prior_mean, covariance_prior_sigma = 1, 0
@@ -33,9 +32,9 @@ def sample_hypers(X, y, K=20):
     """
 
     cov = 1
-    kernel = cov * AutomaticRelevanceDetermination(nu=5/2) + WhiteKernel()
-    hyper_distribution = GaussianProcessRegressor(kernel=kernel)
-    hyper_distribution.fit(X, y)
+    kernel = cov * Matern52Kernel(metric=[1., 1.], ndim=2, axes=[0, 1])
+    hyper_distribution = GP(kernel=kernel, mean=np.mean(y))
+    hyper_distribution.compute(X, yerr=0.05)
 
     def log_prob(theta):
         """
@@ -65,13 +64,15 @@ def sample_hypers(X, y, K=20):
         # Horseshoe
         prior += Horseshoe(scale=0.1).logpdf(noise)
 
-        # Compute log likelihood of the current distribution with proposed values
+        hyper_distribution.kernel.set_parameter_vector([cov, lamb, lamb])
+        try:
+            hyper_distribution.compute(X, yerr=np.sqrt(noise))
+        except:
+            return -np.inf
 
-        prob = hyper_distribution.log_marginal_likelihood(theta=[cov, lamb, noise])
+        return prior + hyper_distribution.log_likelihood(y.reshape(-1), quiet=True)
 
-        return prior + prob
-
-    nwalkers, ndim, iterations = K, kernel.n_dims, 500
+    nwalkers, ndim, iterations = K, kernel.ndim + 1, 500
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
     state = sampler.run_mcmc(np.random.rand(nwalkers, ndim), 100, rstate0=np.random.get_state())
     sampler.reset()
@@ -124,9 +125,9 @@ def entropy_search(dataset, bounds):
 
     for hyper in hyperparameters:
         kernel_cov, lamb, noise = hyper
-        kernel = kernel_cov * AutomaticRelevanceDetermination(length_scale=math.e**lamb, nu=5/2) + \
-            WhiteKernel(noise_level=abs(noise))
-        regressor = GaussianProcessRegressor(kernel=kernel, optimizer=None).fit(dataset["X"], dataset["y"])
+        kernel = kernel_cov * Matern52Kernel(metric=[1., 1.], ndim=2, axes=[0, 1])
+        regressor = GP(kernel=kernel, mean=np.mean(dataset["y"]))
+        regressor.compute(dataset["X"], yerr=noise)
         models.append(regressor)
 
         # sample Z point from M and get predictive mean + covariance
@@ -137,12 +138,12 @@ def entropy_search(dataset, bounds):
         )
 
         representers.append(X_samples)
-        mean, cov = regressor.predict(X_samples, return_cov=True)
+        mean, cov = regressor.predict(dataset["y"], X_samples, return_cov=True)
         means.append(mean)
         covariances.append(cov)
         # compute their Expected Improvement
         logging.debug("Computing EI...")
-        exp_improvement = expected_improvement(mean, cov, regressor.sample_y(X_samples))
+        exp_improvement = expected_improvement(mean, cov, regressor.sample(X_samples))
         U.append(exp_improvement)
 
         # Compute p_min using EPMGP
@@ -156,7 +157,7 @@ def entropy_search(dataset, bounds):
         logging.debug("Generating innovations..")
         for _ in range(n_innovations):
             # Generate a gaussian noise vector
-            innovations.append(np.random.normal(size=n_gen_samples))
+            innovations.append(np.random.normal(size=n_gen_samples).reshape(-1, 1))
 
         Omega.append(innovations)
 
@@ -166,7 +167,7 @@ def entropy_search(dataset, bounds):
     logging.info("Ready to optimize Information Gain")
     return minimize(
         fun=information_gain,
-        args=(models, p_min, representers, U, Omega),
+        args=(models, p_min, representers, U, Omega, dataset),
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
         bounds=bounds,
@@ -278,5 +279,5 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(process)s - %(levelname)s - %(message)s', level=logging.INFO)
+    logging.basicConfig(format='Entropy Search (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
     main()
