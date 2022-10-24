@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.stats as sts
-from sklearn.preprocessing import normalize
 
 import logging
 
@@ -93,7 +92,8 @@ def predict_testpoint_george(models, y, test_point):
     return pred_mean_testpoint, pred_var_testpoint
 
 
-def information_gain(test_point, models, p_min, representers, U, Omega, dataset, n_innovations=20):
+def information_gain(test_point, models, p_min, representers, U, Omega, dataset, n_innovations=20,
+                     enable_log=True):
     """
     Returns the information gain value for `test_point`
 
@@ -126,24 +126,24 @@ def information_gain(test_point, models, p_min, representers, U, Omega, dataset,
             norm = q_max_value if np.any(np.isinf(q_log)) else q_log
             q_min = np.subtract(q_min, norm)
 
-            d_entropy = np.sum(np.exp(p_min[i][0]) * (p_min[i][0] + U[i]))
+            d_entropy = np.sum(np.exp(p_min[i][0]) * (p_min[i][0] + np.log(U[i])))
 
             d_entropy -= np.sum(np.multiply(
                                 np.exp(q_min),
-                                np.add(q_min, U[i])),
+                                np.add(q_min, np.log(U[i]))),
                                 axis=0)
 
             if not np.any(np.isnan(d_entropy)):
                 a += 1/n_innovations * d_entropy.mean()
             else:
                 logging.warning("Cannot compute Information Gain with this model")
-
-    logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")
-    return - (1/len(models) * a)
+    if enable_log:
+        logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")
+    return 1/len(models) * a
 
 
 def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega):
     overhead_cost = 0.0001
-    predicted_cost, _ = predict_testpoint_george(cost_models, normalize(dataset["c"]), test_point)
+    predicted_cost, _ = predict_testpoint_george(cost_models, dataset["c"], test_point)
     cost_factor = 1/(predicted_cost + overhead_cost)
     return cost_factor * information_gain(test_point, models, p_min, representers, U, Omega, dataset)

@@ -1,10 +1,10 @@
-from sklearn.gaussian_process.kernels import RBF
-from scipy.spatial.distance import pdist, cdist, squareform
-from scipy.special import kv, gamma
+import math
 
 import numpy as np
+from scipy.spatial.distance import cdist, pdist, squareform
+from scipy.special import gamma, kv
+from sklearn.gaussian_process.kernels import RBF
 
-import math, warnings
 
 def _check_length_scale(X, length_scale):
     length_scale = np.squeeze(length_scale).astype(float)

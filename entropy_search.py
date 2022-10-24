@@ -166,8 +166,7 @@ def entropy_search(dataset, bounds):
     # Maybe random + last good configuration?
     logging.info("Ready to optimize Information Gain")
     return minimize(
-        fun=information_gain,
-        args=(models, p_min, representers, U, Omega, dataset),
+        fun=lambda x: -information_gain(x, models, p_min, representers, U, Omega, dataset),
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
         bounds=bounds,
