@@ -13,9 +13,24 @@ from datasets import load_mnist
 from utils import save_results
 
 
-def obj_function(configuration, dataset=None):
-    if dataset is None:
-        dataset = load_mnist(training_size=1/16)
+def obj_function(configuration):
+
+    size = None
+    c = None
+    gamma = None
+
+    if len(configuration) == 3:
+        c, gamma, size = configuration
+        c = 10**c
+        gamma = 10**gamma
+
+    if len(configuration) == 2:
+        c, gamma = 10**configuration
+
+    assert (c is not None)
+    assert (gamma is not None)
+
+    dataset = load_mnist(training_size=size)
 
     c, gamma = 10**configuration
     grid = GridSearchCV(SVC(kernel="rbf"), {'C': [c], 'gamma': [gamma]}, n_jobs=-1, verbose=0, cv=5)
@@ -67,9 +82,9 @@ def svm_mnist(method='random_search'):
         results, progress = ei(obj_function, prior, bounds)
 
     elif method == 'entropy_search':
-        import entropy_search
+        from entropy_search import es
         logging.info("Starting Entropy Search...")
-        results, progress = entropy_search(obj_function, data, prior, bounds)
+        results, progress = es(obj_function, prior, bounds)
 
     elif method == 'fabolas':
         logging.info("Starting FABOLAS...")
