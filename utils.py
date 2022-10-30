@@ -11,11 +11,31 @@ def save_results(results, progress, method, folder):
     # then save two files
     # results_{method}_{datetime}.csv
     # progress_{method}_{datetime}.csv
-    path = f"./results/{folder}"
+    path = f"./results/{folder}/{method}"
 
     if not os.path.exists(path):
         os.makedirs(path)
 
-    pd.DataFrame(results).to_csv(os.path.join(path, f"results_{method}_{datetime.datetime.now()}"))
-    pd.DataFrame(progress).to_csv(os.path.join(path, f"progress_{method}_{datetime.datetime.now()}"))
+    results_df = pd.DataFrame()
+    progress_df = pd.DataFrame()
+
+    # Split X and config in multiple columns if needed
+    for col_index in range(results["X"].shape[1]):
+        results_df[f"X_{col_index}"] = results["X"][:, col_index]
+
+    for col_index in range(progress["config"].shape[1]):
+        progress_df[f"config_{col_index}"] = progress["config"][:, col_index]
+
+    results_df["y"] = results["y"]
+    progress_df["value"] = progress["value"]
+
+    progress_df["time"] = progress["time"]
+
+    if method == "fabolas":
+        results_df["size"] = results["size"]
+        results_df["c"] = results["c"]
+        progress_df["size"] = progress["size"]
+
+    results_df.to_csv(os.path.join(path, f"results_{method}_{datetime.datetime.now()}"))
+    progress_df.to_csv(os.path.join(path, f"progress_{method}_{datetime.datetime.now()}"))
     logging.info(f"Results saved in {path}.")
