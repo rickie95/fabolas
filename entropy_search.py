@@ -1,9 +1,6 @@
 import logging
-import math
 import time
-from random import sample
 
-import mnist
 import numpy as np
 import scipy.stats as sts
 from emcee import EnsembleSampler
@@ -80,29 +77,6 @@ def sample_hypers(X, y, K=20):
     return sampler.chain[:, -1]
 
 
-def compute_pmin(mu: np.array, sigma: np.array, derivatives=False):
-    """
-        Compute p_min using EPMGP from GPyOpt
-
-        ### Parameters:
-        - `mu`: mean vector
-            - `np.array(N,)`
-        - `sigma`: covariance matrix
-            - `np.array(N, N)`
-        - `derivatives`: enable derivatives
-            - bool
-
-
-        ### Returns:
-        - `pmin`: log distribution
-            - np.array(N, 1)
-        - `dLogP_dMu`: derivative respect to mean
-        - `dLogP_dSigma`: derivative respect to covariance
-        - `dLogP_dMu_dMu`
-    """
-    return epmgp.joint_min(mu, sigma, with_derivatives=derivatives)
-
-
 def entropy_search(dataset, bounds):
     n_hyper_samples = 20    # K parameter
     n_gen_samples = 50      # Z parameter
@@ -148,7 +122,7 @@ def entropy_search(dataset, bounds):
 
         # Compute p_min using EPMGP
         logging.debug("Computing pMin")
-        p_min.append(compute_pmin(mean, cov, derivatives=True))
+        p_min.append(epmgp.joint_min(mean, cov, with_derivatives=True))
 
         # generate P noise vectors from a Gaussian(0, I_Z)
         # Q: Why save'em in memory when they can be generated on the fly?
@@ -173,15 +147,6 @@ def entropy_search(dataset, bounds):
         )
 
 
-def obj_function(configuration, dataset=None):
-    if dataset is None:
-        dataset = load_mnist(1)
-    c, gamma = configuration
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [10**c], 'gamma': [10**gamma]}, n_jobs=-1, verbose=3, cv=5)
-    grid.fit(dataset["X"], dataset["y"])
-    return grid.best_score_
-
-
 def generate_prior(data):
 
     C_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
@@ -197,86 +162,50 @@ def generate_prior(data):
     return x_values, y_values
 
 
-def load_mnist(training_size):
-    dataset = {}
-
-    train_x, train_y = mnist.train_images(), mnist.train_labels()
-    test_x, test_y = mnist.test_images(), mnist.test_labels()
-
-    train_x = train_x.reshape(train_x.shape[0], train_x.shape[1] * train_x.shape[2])
-    test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2])
-
-    if training_size > 1:
-        indices = sample(range(train_x.shape[0]), math.floor(train_x.shape[0]/training_size))
-        dataset["X"] = train_x[indices]
-        dataset["y"] = train_y[indices]
-    else:
-        dataset["X"] = train_x
-        dataset["y"] = train_y
-
-    dataset["X_test"] = test_x
-    dataset["y_test"] = test_y
-
-    return dataset
-
-
-def main():
+def es(obj_function, prior, bounds):
     """
-        Test Entropy Search with a simple "complex" function.
+        Perform bayesian optimization of `obj_function` over `data`, using 
+        `prior` as baseline.
     """
     iterations = 10
 
-    logging.info("Loading dataset...")
-    data = load_mnist(128)
-    logging.info("Dataset loaded.")
-
-    best_x = None
-    best_y = None
-
-    # Bayesian optimization needs a prior: this can be
-    # derived by some knowledge about the function
-    # or generated/sampled by some fancy strategy
-    dataset = {}
-    dataset["X"], dataset["y"] = generate_prior(data)
-    logging.info("Prior generated")
-
-    best_index = np.argmax(dataset["y"])
-    best_x = dataset["X"][best_index]
-    best_y = dataset["y"][best_index]
-
-    # Optimization loop can finally start. The stopping criteria is
-    # based on a fixed number of iterations but could take in account
+    # The stopping criteria is based on a fixed number 
+    # of iterations but could take in account
     # a "min improvement" policy
 
-    for _ in range(iterations):
+    prior['y'] = prior['y'].reshape(-1)
 
+    wallclock_time = time.time()
+    progress = {
+        "config": np.empty((0, prior["X"].shape[1])),
+        "value": np.empty((0, 1)),
+        "time": np.empty((0, 1))
+    }
+
+    for i in range(iterations):
+        logging.info(f"---- ES: Iteration #{i+1} ----")
+        
         # Find the next candidate
-        result = entropy_search(dataset, bounds=[(-10, 10), (-10, 10)])
+        result = entropy_search(prior, bounds)
 
         logging.info(f"Evaluating function at {result.x}")
-        function_time = time.time()
         # Evaluate the function
         y = obj_function(result.x)
-        function_time = time.time() - function_time
+        iteration_time = time.time() - wallclock_time
 
-        performance = (y / best_y - 1)*100
-        logging.info(f"Function value: {y} ({('+' if performance > 0 else '')}{'%.5f' % performance} %), \
-            {'%.5f' % function_time}s")
+        logging.info(f"Function value: {y}")
 
         # Save the results
-        dataset["X"] = np.vstack([dataset["X"], result.x])
-        dataset["y"] = np.append(dataset["y"], np.array([y]))
+        prior["X"] = np.vstack([prior["X"], result.x])
+        prior["y"] = np.append(prior["y"], np.array([y]))
 
-        # Save the best candidate so far
-        best_index = np.argmax(dataset["y"])
-        best_x = dataset["X"][best_index]
-        best_y = dataset["y"][best_index]
+        # Also update progress
+        progress["config"] = np.vstack([progress["config"], result.x])
+        progress["value"] = np.append(progress["value"], np.array([y]))
+        progress["time"] = np.append(progress["time"], np.array([iteration_time]))
 
-    # Optimization loop has ended, print the results
-    logging.info(f"Best score {best_y}")
-    logging.info(f"with configuration: {str(best_x)}")
+    prior["y_best"] = max(prior["y"])
+    imax = np.argmax(prior["y"])
+    prior["X_best"] = prior["X"][imax]
 
-
-if __name__ == "__main__":
-    logging.basicConfig(format='Entropy Search (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
-    main()
+    return prior, progress
