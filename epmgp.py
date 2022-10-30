@@ -49,8 +49,6 @@ eps = np.finfo(np.float32).eps
 l2p = np.log(2) + np.log(np.pi)
 
 
-
-
 def joint_min(mu, var, with_derivatives=False, **kwargs):
     """
     Computes the probability of every given point to be the minimum
@@ -62,14 +60,26 @@ def joint_min(mu, var, with_derivatives=False, **kwargs):
     ----------
     M: np.ndarray(N,)
         Mean value of each of the N points.
+
     V: np.ndarray(N, N)
         Covariance matrix for all points
+
     with_derivatives: bool
         If true than also the gradients are computed
     Returns
     -------
     np.ndarray(N,1)
         pmin distribution
+
+    np.ndarray(N,1)
+        dLogP_dMu, log prob derivative respect to mean
+
+    np.ndarray(N,N)
+        dLogP_dSigma
+
+    np.ndarray(N,N)
+        dLogP_dMu_dMu
+
     """
 
     logP = np.zeros(mu.shape)
