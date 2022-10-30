@@ -28,13 +28,13 @@ def ei(obj_function, prior, bounds=None) -> np.array:
     n_iter = 10
     wallclock_time = time.time()
     progress = {
-        "config": [],
-        "value": [],
-        "time": []
+        "config": np.empty((0, prior["X"].shape[1])),
+        "value": np.empty((0, 1)),
+        "time": np.empty((0, 1))
     }
 
     for i in range(n_iter):
-        print(f"---- EI: Iteration #{i+1} ----")
+        logging.info(f"---- EI: Iteration #{i+1} ----")
         
         X_candidate = get_candidate(prior, bounds)
 
@@ -53,9 +53,9 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         prior["X"] = np.vstack([prior["X"], X_candidate])
         prior["y"] = np.append(prior["y"], np.array([y_candidate]))
 
-        progress["config"].append(X_candidate)
-        progress["value"].append(y_candidate)
-        progress["time"].append(iteration_time)
+        progress["config"] = np.vstack([progress["config"], X_candidate])
+        progress["value"] = np.append(progress["value"], np.array([y_candidate]))
+        progress["time"] = np.append(progress["time"], np.array([iteration_time]))
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
