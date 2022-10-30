@@ -6,6 +6,7 @@ from sklearn.gaussian_process.kernels import Matern
 from acquisitions import expected_improvement
 
 import logging
+import time
 
 
 def ei(obj_function, prior, bounds=None) -> np.array:
@@ -25,10 +26,16 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         Returns the prior extended with the points evaluated during the optimization.
     """
     n_iter = 10
+    wallclock_time = time.time()
+    progress = {
+        "config": [],
+        "value": [],
+        "time": []
+    }
 
     for i in range(n_iter):
         print(f"---- EI: Iteration #{i+1} ----")
-
+        
         X_candidate = get_candidate(prior, bounds)
 
         logging.info(f"Selected this candidate: {X_candidate}")
@@ -39,17 +46,22 @@ def ei(obj_function, prior, bounds=None) -> np.array:
 
         logging.info("Evaluating function...")
         y_candidate = obj_function(X_candidate)
+        iteration_time = time.time() - wallclock_time
 
         logging.info(f"Function value: {y_candidate}")
 
         prior["X"] = np.vstack([prior["X"], X_candidate])
         prior["y"] = np.append(prior["y"], np.array([y_candidate]))
 
+        progress["config"].append(X_candidate)
+        progress["value"].append(y_candidate)
+        progress["time"].append(iteration_time)
+
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
     prior["X_best"] = prior["X"][imax]
 
-    return prior
+    return prior, progress
 
 
 def get_candidate(prior, bounds):
