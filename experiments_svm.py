@@ -15,24 +15,24 @@ from utils import save_results
 
 def obj_function(configuration):
 
-    size = None
+    size = 1
     c = None
     gamma = None
 
     if len(configuration) == 3:
         c, gamma, size = configuration
-        c = 10**c
-        gamma = 10**gamma
-
+        
     if len(configuration) == 2:
-        c, gamma = 10**configuration
+        c, gamma = configuration
 
     assert (c is not None)
     assert (gamma is not None)
 
+    c = 10**c
+    gamma = 10**gamma
+
     dataset = load_mnist(training_size=size)
 
-    c, gamma = 10**configuration
     grid = GridSearchCV(SVC(kernel="rbf"), {'C': [c], 'gamma': [gamma]}, n_jobs=-1, verbose=0, cv=5)
     grid.fit(dataset["X"], dataset["y"])
     return grid.best_score_
@@ -59,6 +59,19 @@ def load_prior(with_size=False):
     }
 
 
+def generate_prior():
+    prior = {
+        "X": np.empty((0, 2)),
+        "y": np.empty((0, 1))
+    }
+
+    for c in [-10, -5, 0, 5, 10]:
+        for gamma in [-10, -5, 0, 5, 10]:
+            y = obj_function([c, gamma])
+            prior["X"] = np.vstack([prior["X"], np.array([c, gamma])])
+            prior["y"] = np.append(prior["y"], np.array([y]))
+
+
 def svm_mnist(method='random_search'):
     prior = None
     try:
@@ -72,9 +85,9 @@ def svm_mnist(method='random_search'):
     results = []
 
     if method == 'random_search':
-        import random_search
+        from random_search import rs
         logging.info("Starting Random Search...")
-        results, progress = random_search(obj_function, load_mnist)
+        results, progress = rs(obj_function, prior, bounds)
 
     elif method == 'expected_improvement':
         from expected_improvement import ei

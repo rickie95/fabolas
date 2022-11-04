@@ -3,6 +3,8 @@ from random import sample
 import math
 import logging
 
+import mnist
+
 
 def load_mnist(training_size=1):
     import mnist
