@@ -6,8 +6,8 @@ import numpy as np
 
 def rs(obj_function, prior, bounds, radius=10e-5):
     """
-        Performs Random Search for `obj_function`. Candidates are 
-        randomly choosen, however a distance check is always performed 
+        Performs Random Search for `obj_function`. Candidates are
+        randomly choosen, however a distance check is always performed
         in order to avoid repetitions. `radius` parameter controls
         this behaviour, and can be nulled to suppress this check.
     """
@@ -21,9 +21,9 @@ def rs(obj_function, prior, bounds, radius=10e-5):
 
     wallclock_time = time.time()
 
-    for _ in range(iterations):
+    for i in range(iterations):
         logging.info(f"---- RS: Iteration #{i+1} ----")
-        
+
         X_candidate = get_candidate(prior, bounds)
 
         logging.info(f"Selected this candidate: {X_candidate}")
@@ -54,7 +54,7 @@ def get_candidate(prior, bounds, radius=10e-5):
     def compute_distance(candidate, points):
         return list(
             map(
-                lambda x: np.linalg.norm(x - candidate), 
+                lambda x: np.linalg.norm(x - candidate),
                 points
             )
         )
@@ -71,4 +71,4 @@ def get_candidate(prior, bounds, radius=10e-5):
             size=(1, prior["X"].shape[1])
         )
 
-    return x_candidate
+    return x_candidate.reshape(-1)

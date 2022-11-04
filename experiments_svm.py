@@ -21,7 +21,7 @@ def obj_function(configuration):
 
     if len(configuration) == 3:
         c, gamma, size = configuration
-        
+
     if len(configuration) == 2:
         c, gamma = configuration
 
@@ -33,7 +33,7 @@ def obj_function(configuration):
 
     dataset = load_mnist(training_size=size)
 
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [c], 'gamma': [gamma]}, n_jobs=-1, verbose=0, cv=5)
+    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [c], 'gamma': [gamma]}, n_jobs=5, verbose=0, cv=5)
     grid.fit(dataset["X"], dataset["y"])
     return grid.best_score_
 
@@ -79,7 +79,7 @@ def svm_mnist(method='random_search'):
     except:
         prior = generate_prior()
 
-    assert(prior is not None)
+    assert (prior is not None)
 
     bounds = [(-10, 10), (-10, 10)]
     results = []
@@ -101,7 +101,7 @@ def svm_mnist(method='random_search'):
 
     elif method == 'fabolas':
         logging.info("Starting FABOLAS...")
-        results, progress = fabolas(obj_function, data, prior, bounds)
+        results, progress = fabolas(obj_function, prior, bounds)
 
     logging.info(f"Best value: {prior['y_best']}, with conf {prior['X_best']}")
 
@@ -110,4 +110,5 @@ def svm_mnist(method='random_search'):
 
 if __name__ == "__main__":
     logging.basicConfig(format='SVM_MNIST (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
-    svm_mnist(method='expected_improvement')
+    # svm_mnist(method='random_search')
+    svm_mnist(method='entropy_search')
