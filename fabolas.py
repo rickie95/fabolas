@@ -7,25 +7,23 @@ from emcee.ensemble import EnsembleSampler
 from george.gp import GP
 from george.kernels import ConstantKernel, LinearKernel, Matern52Kernel
 from scipy.optimize import minimize
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import normalize
-from sklearn.svm import SVC
 
 import epmgp
 from acquisitions import (expected_improvement, information_gain,
                           predict_testpoint_george)
-from datasets import load_mnist
 from horseshoe import Horseshoe
 
-min_time = 0
 
 def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega):
     overhead_cost = 0.0001
-    predicted_cost, _ = predict_testpoint_george(cost_models, dataset["c"], test_point)
+    predicted_cost, _ = predict_testpoint_george(
+        cost_models, dataset["c"], test_point)
     cost_factor = 1/(predicted_cost + overhead_cost)
-    ig = information_gain(test_point, models, p_min, representers, U, Omega, dataset, enable_log=False)
+    ig = information_gain(test_point, models, p_min,
+                          representers, U, Omega, dataset, enable_log=False)
     ig_cost = cost_factor * ig
-    logging.info(f"IG: {ig}, cost_f {cost_factor}, ig_cost {ig_cost}. x = {test_point}")
+    logging.info(
+        f"IG: {ig}, cost_f {cost_factor}, ig_cost {ig_cost}. x = {test_point}")
     return ig_cost
 
 
@@ -73,6 +71,9 @@ def log_likelihood(params, gp, X, y):
     # [covariance, matern_length_dim_1, matern_length_dim2, linear_length, bias_length]
     gp.kernel.set_parameter_vector([cov, lamb1, lamb1, lamb2, lamb2])
     try:
+        if noise < 0:
+            return -np.inf
+
         gp.compute(X, yerr=np.sqrt(noise))
     except:
         return -np.inf
@@ -106,23 +107,28 @@ def sample_hypers(X, y, K=20):
         log_prob_fn=log_likelihood,
         args=[function_regressor, X, y])
 
-    state = sampler.run_mcmc(np.random.rand(nwalkers, len(kernel) - 1), 100, rstate0=np.random.get_state())
+    state = sampler.run_mcmc(np.random.rand(nwalkers, len(
+        kernel) - 1), 100, rstate0=np.random.get_state())
     sampler.reset()
     sampler.run_mcmc(state, iterations)
 
     return sampler.chain[:, -1]
 
 
-def fabolas(dataset, bounds):
+def get_candidate(dataset, bounds):
     n_hyper_samples = 20    # K parameter
     n_gen_samples = 50      # Z parameter
     n_innovations = 20      # P parameter
 
-    X = dataset["X"]
+    if len(dataset["size"].shape) == 1:
+        dataset["size"] = dataset["size"].reshape(-1, 1)
+
+    X = np.concatenate([dataset["X"], dataset["size"]], axis=1)
 
     logging.info("Sampling hyperparameters for function models...")
     hypers = sample_hypers(
-        X=np.concatenate((X[:, :-1], ((1 - X[:, -1])**2).reshape(-1, 1)), axis=1),
+        X=np.concatenate(
+            (X[:, :-1], ((1 - X[:, -1])**2).reshape(-1, 1)), axis=1),
         y=dataset["y"],
         K=n_hyper_samples)
 
@@ -144,14 +150,15 @@ def fabolas(dataset, bounds):
             metric=np.exp([lamb1, lamb1]),
             ndim=3,
             axes=[0, 1]
-            ) * (
-                LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
-                ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
-                )
+        ) * (
+            LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
+            ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
+        )
 
         regressor = GP(kernel=kernel, mean=np.mean(dataset["y"]))
 
-        x = np.concatenate((X[:, :-1], ((1 - X[:, -1])**2).reshape(-1, 1)), axis=1)
+        x = np.concatenate(
+            (X[:, :-1], ((1 - X[:, -1])**2).reshape(-1, 1)), axis=1)
 
         regressor.compute(x, np.sqrt(noise))
 
@@ -160,17 +167,19 @@ def fabolas(dataset, bounds):
         X_samples = np.random.uniform(
             low=[b[0] for b in bounds],
             high=[b[1] for b in bounds],
-            size=(n_gen_samples, dataset["X"].shape[1])
+            size=(n_gen_samples, dataset["X"].shape[1] + 1)
         )
 
         representers.append(X_samples)
-        mean, cov = regressor.predict(dataset["y"].reshape(-1), X_samples, return_cov=True)
+        mean, cov = regressor.predict(
+            dataset["y"].reshape(-1), X_samples, return_cov=True)
 
         means.append(mean)
         covariances.append(cov)
 
         logging.debug("Computing EI...")
-        exp_improvement = expected_improvement(mean, cov, regressor.sample(X_samples))
+        exp_improvement = expected_improvement(
+            mean, cov, regressor.sample(X_samples))
         U.append(exp_improvement)
 
         logging.debug("Computing pMin")
@@ -183,7 +192,8 @@ def fabolas(dataset, bounds):
         logging.debug("Generating innovations..")
         for _ in range(n_innovations):
             # Generate a gaussian noise vector
-            innovations.append(np.random.normal(size=n_gen_samples).reshape(-1, 1))
+            innovations.append(np.random.normal(
+                size=n_gen_samples).reshape(-1, 1))
 
         Omega.append(innovations)
 
@@ -193,169 +203,97 @@ def fabolas(dataset, bounds):
             metric=np.exp([lamb1, lamb1]),
             ndim=3,
             axes=[0, 1]
-            ) * (
-                LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
-                ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
-                )
+        ) * (
+            LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
+            ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
+        )
 
         cost_regressor = GP(kernel=kernel, mean=np.mean(dataset["c"]))
-        cost_regressor.compute(dataset["X"], np.sqrt(noise))
+        cost_regressor.compute(np.concatenate(
+            [dataset["X"], dataset["size"]], axis=1), np.sqrt(noise))
         cost_models.append(cost_regressor)
 
     logging.info("Ready to optimize Information Gain by Cost")
+
+    starting_point = np.concatenate([
+        dataset["X"][np.argmax(dataset["y"])],
+        dataset["size"][np.argmax(dataset["y"])]
+    ])
+
     return minimize(
         fun=lambda x: - information_gain_cost(
             x, cost_models, models, dataset, p_min, representers, U, Omega),
-        x0=dataset["X"][np.argmin(dataset["y"])],
+        x0=starting_point,
         method='L-BFGS-B',
         bounds=bounds,
-        )
+    )
 
 
-def obj_function(configuration, dataset, size=None):
-
-    c, gamma = configuration
-
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': [c], 'gamma': [gamma]}, n_jobs=-1, cv=5)
-    grid.fit(dataset["X"], dataset["y"])
-    executionTime = (grid.cv_results_["mean_fit_time"] + grid.cv_results_["mean_score_time"])[0]
-
-    mean_score = grid.cv_results_['mean_test_score'][0]
-    logging.info(f"Config: [C: {'%.3f' % c}, gamma: {'%.3f' % gamma}, \
-        size: {dataset['size'] if size is None else size}] \
-        Mean score: {'%.5f' % mean_score} \
-        (Best {'%.5f' % grid.best_score_}) Time: {'%.3fs' % executionTime}")
-
-    return 1 - grid.best_score_, executionTime
-
-
-def generate_prior():
-    C_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
-    gamma_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
-    s_values = [128, 64, 32, 4]
-
-    # Init prior informations
-    dataset = {}
-    dataset["X"] = []
-    dataset["y"] = []
-    dataset["c"] = []
-
-    for size in s_values:
-        data = load_mnist(1/size)
-        data["size"] = 1/size
-        for gamma in gamma_values:
-            for c in C_values:
-                score, cost = obj_function((c, gamma), data)
-                dataset["X"].append((c, gamma, 1/size))
-                dataset["y"].append(score)
-                dataset["c"].append(cost)
-
-    # Dump the prior into a csv
-    prior = np.array([(*x, y, z) for x, y, z in zip(dataset["X"], dataset["y"], dataset["c"])])
-    np.savetxt("./results/fabolas/prior.csv", prior, delimiter=",")
-
-    # After the dump do some transformations on the data
-
-    # Cost is in log form
-    dataset["c"] = np.log10(dataset["c"])
-
-    if min(dataset["c"]) < 0:
-        dataset["min_time"] = min(dataset["c"])
-        dataset["c"] += -dataset["min_time"]
-
-    return dataset
-
-
-def load_prior():
-    data = np.loadtxt("./results/fabolas/partial-prior.csv", delimiter=",")
-
-    dataset = {}
-    dataset["X"] = data[:, :-2]
-    
-    dataset["y"] = np.array(data[:, -2]).reshape(-1, 1)
-    dataset["c"] = np.array(data[:, -1]).reshape(-1, 1)
-
-    # Configuration is mapped in log space
-    dataset["X"][:, :-1] = np.log10(dataset["X"][:, :-1])
-
-    # Cost is in log form
-    dataset["c"] = np.log10(dataset["c"])
-
-    dataset["min_time"] = 0
-    if min(dataset["c"]) < 0:
-        dataset["min_time"] = np.array(min(dataset["c"]))
-        dataset["c"] += -dataset["min_time"]
-
-    #  Validation error, the lesser the better
-    dataset["y"] = 1 - dataset["y"]
-
-    return dataset
-
-
-def main():
+def fabolas(obj_function, prior, bounds):
     """
         Test FABOLAS with a simple "complex" function.
     """
     iterations = 10
 
-    best_x = None
-    best_y = None
+    if prior is None:
+        logging.info("Prior not available, proceed to generate it..")
+        prior = generate_prior()
+    # dataset = load_prior()
 
-    # Bayesian optimization needs a prior: this can be
-    # derived by some knowledge about the function
-    # or generated/sampled by some fancy strategy
-    # dataset = generate_prior()
-    dataset = load_prior()
-    logging.info("Prior generated")
+    prior['y'] = prior['y'].reshape(-1)
 
-    best_index = np.argmin(dataset["y"])
-    best_x = dataset["X"][best_index]
-    best_y = dataset["y"][best_index]
+    prior["min_time"] = 0
+    if min(prior["c"]) < 0:
+        prior["min_time"] = np.array(min(prior["c"]))
+        prior["c"] += -prior["min_time"]
 
-    # Optimization loop can finally start. The stopping criteria is
-    # based on a fixed number of iterations but could take in account
-    # a "min improvement" policy
+    wallclock_time = time.time()
+    progress = {
+        "config": np.empty((0, prior["X"].shape[1] + 1)),
+        "value": np.empty((0, 1)),
+        "time": np.empty((0, 1)),
+        "size": np.empty((0, 1))
+    }
 
     for i in range(iterations):
-        logging.info("==================================")
-        logging.info(f"========= Iteration # {i} =========")
-        logging.info("==================================")
+        logging.info(f"---- FABOLAS: Iteration #{i+1} ----")
+
         # Find the next candidate
-        result = fabolas(dataset, bounds=[(-10, 10), (-10, 10), (1/256, 1)])
+        result = None
+        while result is None:
+            try:
+                result = get_candidate(prior, bounds)
+            except ArithmeticError:
+                logging.warn("Bad surrogate, trying again..")
 
         logging.info(f"Evaluating function at {result.x}")
-        function_time = time.time()
-        # Evaluate the function. Last component of X is the training set size
-        y, cost = obj_function(10**result.x[:-1], load_mnist(result.x[-1]), result.x[-1])
-        function_time = time.time() - function_time
+        cost = time.time()
+        y = obj_function(result.x)
+        cost = time.time() - cost
+        iteration_time = time.time() - wallclock_time
 
-        performance = (y / best_y - 1)*100
-        logging.info(f"Function value: {y} ({('+' if performance > 0 else '')}{'%.5f' % performance} %), \
-            {'%.5f' % cost}s")
+        logging.info(f"Function value: {y} ({cost}s)")
 
         # Save the results
-        dataset["X"] = np.vstack([dataset["X"], result.x])
-        dataset["y"] = np.append(dataset["y"], np.array([y]))
-        dataset["c"] = np.append(dataset["c"], np.array([np.log10(cost) - dataset["min_time"]]))
+        prior["X"] = np.vstack([prior["X"], result.x[:-1]])
+        prior["y"] = np.append(prior["y"], np.array([y]))
+        prior["size"] = np.append(prior["size"], np.array([result.x[-1]]))
+        prior["c"] = np.append(prior["c"], np.array(
+            [np.log10(cost) - prior["min_time"]]))
 
-        if min(dataset["c"]) < 0:
-            dataset["c"] += -(np.log10(cost) - dataset["min_time"])
-            dataset["min_time"] = np.array(np.log10(cost))
+        if min(prior["c"]) < 0:
+            prior["c"] += -(np.log10(cost) - prior["min_time"])
+            prior["min_time"] = np.array(np.log10(cost))
 
-        # FIXME: write the results in the CSV
+        # Also update progress
+        progress["config"] = np.vstack([progress["config"], result.x])
+        progress["value"] = np.append(progress["value"], np.array([y]))
+        progress["time"] = np.append(
+            progress["time"], np.array([iteration_time]))
+        progress["size"] = np.append(progress["size"], np.array([result.x[-1]]))
 
-        # Save the best candidate so far
-        best_index = np.argmin(dataset["y"])
-        best_x = dataset["X"][best_index]
-        best_y = dataset["y"][best_index]
+    prior["y_best"] = max(prior["y"])
+    imax = np.argmax(prior["y"])
+    prior["X_best"] = prior["X"][imax]
 
-    # Optimization loop has ended, print the results
-    logging.info(f"Best score {best_y}")
-    logging.info(f"with configuration: {str(best_x)}")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        format='FABOLAS (%(process)s) - %(levelname)s - %(message)s',
-        level=logging.INFO)
-    main()
+    return prior, progress

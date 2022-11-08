@@ -137,6 +137,7 @@ def information_gain(test_point, models, p_min, representers, U, Omega, dataset,
                 a += 1/n_innovations * d_entropy.mean()
             else:
                 logging.warning("Cannot compute Information Gain with this model")
+                raise ArithmeticError("Cannot compute Information Gain with this model")
     if enable_log:
         logging.info(f"IG: {1/len(models) * a} for test point: {test_point}")
     return 1/len(models) * a

@@ -186,14 +186,19 @@ def es(obj_function, prior, bounds):
         logging.info(f"---- ES: Iteration #{i+1} ----")
         
         # Find the next candidate
-        result = entropy_search(prior, bounds)
+        result = None
+        while result is None:
+            try:
+                result = entropy_search(prior, bounds)
+            except ArithmeticError:
+                logging.warn("Bad surrogate, trying again..")
 
         logging.info(f"Evaluating function at {result.x}")
         # Evaluate the function
         y = obj_function(result.x)
         iteration_time = time.time() - wallclock_time
 
-        logging.info(f"Function value: {y}")
+        logging.info(f"Function value: {y} ({iteration_time}s)")
 
         # Save the results
         prior["X"] = np.vstack([prior["X"], result.x])

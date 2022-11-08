@@ -48,7 +48,7 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         y_candidate = obj_function(X_candidate)
         iteration_time = time.time() - wallclock_time
 
-        logging.info(f"Function value: {y_candidate}")
+        logging.info(f"Function value: {y_candidate} ({iteration_time}s)")
 
         prior["X"] = np.vstack([prior["X"], X_candidate])
         prior["y"] = np.append(prior["y"], np.array([y_candidate]))

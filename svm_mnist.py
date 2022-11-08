@@ -3,6 +3,7 @@
 """
 
 import logging
+import sys
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 
 from datasets import load_mnist
-from utils import save_results
+from utils import save_results, print_usage
 
 
 def obj_function(configuration):
@@ -47,7 +48,7 @@ def load_prior(with_size=False):
         "y": validation_score [0, 1]
         "c": log10 cost of the run, expressed in seconds
     """
-    df = pd.read_csv("./results/fabolas/prior.csv")
+    df = pd.read_csv("./prior/prior.csv")
     if not with_size:
         df = df.query("size > 0.20")
 
@@ -55,7 +56,7 @@ def load_prior(with_size=False):
         "X": np.log10(np.array([df["C"], df["gamma"]]).T),
         "size": np.array(df["size"]).reshape(-1, 1),
         "y": np.array(df["validation_score"]).reshape(-1, 1),
-        "c": np.array(df["time_s"]).reshape(-1, 1)
+        "c": np.log10(np.array(df["time_s"]).reshape(-1, 1))
     }
 
 
@@ -74,6 +75,9 @@ def generate_prior():
 
 def svm_mnist(method='random_search'):
     prior = None
+
+    method = 'random_search' if method is None else method
+
     try:
         prior = load_prior()
     except:
@@ -100,15 +104,26 @@ def svm_mnist(method='random_search'):
         results, progress = es(obj_function, prior, bounds)
 
     elif method == 'fabolas':
+        from fabolas import fabolas
         logging.info("Starting FABOLAS...")
-        results, progress = fabolas(obj_function, prior, bounds)
+        results, progress = fabolas(obj_function, load_prior(with_size=True), [(-10, 10), (-10, 10), (1/256, 1)])
+
+    else:
+        return 1
 
     logging.info(f"Best value: {prior['y_best']}, with conf {prior['X_best']}")
 
     save_results(results, progress, method, "svm_mnist")
 
+    return 0
+
 
 if __name__ == "__main__":
     logging.basicConfig(format='SVM_MNIST (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
-    # svm_mnist(method='random_search')
-    svm_mnist(method='entropy_search')
+    method = None
+
+    if len(sys.argv) == 2:
+        method = sys.argv[1]
+
+    if svm_mnist(method=method) > 0:
+        print_usage(sys.argv)

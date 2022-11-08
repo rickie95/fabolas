@@ -3,11 +3,8 @@ from random import sample
 import math
 import logging
 
-import mnist
-
 
 def load_mnist(training_size=1):
-    import mnist
     """ Loads MNIST dataset. It is possible to reduce the training set size
         passing the fraction requested. (e.g. passing 64 il will be loaded
         a 1/64 of the training set). Test set is always fully populated.
@@ -15,6 +12,9 @@ def load_mnist(training_size=1):
         ## Parameters
         - `training_size` Must be equal or greater than 1.
     """
+
+    import mnist
+    mnist.temporary_dir = lambda: './data/mnist'
 
     if training_size > 1:
         logging.error("Training set size must be greater than 1")
