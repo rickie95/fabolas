@@ -48,7 +48,7 @@ def load_prior(with_size=False):
         "y": validation_score [0, 1]
         "c": log10 cost of the run, expressed in seconds
     """
-    df = pd.read_csv("./prior/prior.csv")
+    df = pd.read_csv("./prior/prior_svm_mnist.csv")
     if not with_size:
         df = df.query("size > 0.20")
 

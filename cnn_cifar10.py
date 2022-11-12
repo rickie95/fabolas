@@ -7,6 +7,7 @@ import time
 import sys
 
 import numpy as np
+import pandas as pd
 
 from datasets import load_cifar
 from utils import save_results, print_usage
@@ -109,7 +110,29 @@ def generate_prior(bounds, n_points=25):
         prior["c"] = np.append(prior["c"], np.array([y]))
 
 
-def cnn_cifar10(method='random_search'):
+def load_prior(with_size=1):
+    df = pd.read_csv("./prior/prior_cnn_cifar10.csv")
+
+    if not with_size:
+        df = df.query("size == 1")
+
+    return {
+        "X": np.concatenate(
+            (np.log2(
+                np.array([df["l1_filters"],
+                          df["l2_filters"],
+                          df["l3_filters"]])
+            ),
+                np.array([df["batch_size"]]),
+                np.log10(np.array([df["learn_rate"]]))),
+            axis=0).T,
+        "y": np.array(df["score"]).reshape(-1, 1),
+        "c": np.array(df["cost_s"]).reshape(-1, 1),
+        "size": np.array(df["size"]).reshape(-1, 1)
+    }
+
+
+def cnn_cifar10(method='random_search', save_path=None):
     prior = None
 
     method = 'random_search' if method is None else method
@@ -149,23 +172,36 @@ def cnn_cifar10(method='random_search'):
     elif method == 'fabolas':
         from fabolas import fabolas
         logging.info("Starting FABOLAS...")
-        results, progress = fabolas(obj_function, load_prior(with_size=True), [(-10, 10), (-10, 10), (1/256, 1)])
+        results, progress = fabolas(obj_function, load_prior(
+            with_size=True), [(-10, 10), (-10, 10), (1/256, 1)])
 
     else:
         return 1
 
     logging.info(f"Best value: {prior['y_best']}, with conf {prior['X_best']}")
 
-    save_results(results, progress, method, "cnn_cifar10")
+    save_results(
+        results,
+        progress,
+        method,
+        "./results/cnn_cifar10" if save_path is None else save_path
+    )
+
+    return 0
 
 
 if __name__ == "__main__":
     logging.basicConfig(
         format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
+
     method = None
+    save_path = None
 
     if len(sys.argv) == 2:
         method = sys.argv[1]
 
-    if cnn_cifar10(method=method) > 0:
+    if len(sys.argv) == 3:
+        save_path = sys.argv[2]
+
+    if cnn_cifar10(method=method, save_path=save_path) > 0:
         print_usage(sys.argv)
