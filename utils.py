@@ -11,7 +11,7 @@ def save_results(results, progress, method, folder):
     # then save two files
     # results_{method}_{datetime}.csv
     # progress_{method}_{datetime}.csv
-    path = f"./results/{folder}/{method}"
+    path = f"{folder}/{method}"
 
     if not os.path.exists(path):
         os.makedirs(path)
