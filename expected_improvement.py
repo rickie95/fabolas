@@ -51,11 +51,11 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         logging.info(f"Function value: {y_candidate} ({iteration_time}s)")
 
         prior["X"] = np.vstack([prior["X"], X_candidate])
-        prior["y"] = np.append(prior["y"], np.array([y_candidate]))
+        prior["y"] = np.vstack([prior["y"], np.array([y_candidate])])
 
         progress["config"] = np.vstack([progress["config"], X_candidate])
-        progress["value"] = np.append(progress["value"], np.array([y_candidate]))
-        progress["time"] = np.append(progress["time"], np.array([iteration_time]))
+        progress["value"] = np.vstack([progress["value"], np.array([y_candidate])])
+        progress["time"] = np.vstack([progress["time"], np.array([iteration_time])])
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
