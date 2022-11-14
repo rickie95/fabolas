@@ -5,8 +5,13 @@ This repository replicates experiments from Klein, Falkner, Bartels, Henning, Hu
 ## Experiments:
 - [X] Showcase: grid search on SVM
 - [ ] SVM Grid on MNIST
-- [ ] SMV with **no grid constraint** on MNIST, Vehicle Registration an Forest Cover Types 
-- [ ] CNN on CIFAR-10 and SVHN
+- [ ] SMV with **no grid constraint** on 
+  - [X] MNIST, 
+  - [ ] Vehicle Registration,
+  - [ ] Forest Cover Types 
+- [ ] CNN on:
+  - [ ] CIFAR-10,
+  - [ ] SVHN
 - [ ] Deep Residual Network on CIFAR-10
 
 ### Showcase: Grid Search on SVM
