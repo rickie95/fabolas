@@ -201,13 +201,13 @@ def es(obj_function, prior, bounds):
 
         # Save the results
         prior["X"] = np.vstack([prior["X"], result.x])
-        prior["y"] = np.append(prior["y"], np.array([y]))
+        prior["y"] = np.vstack([prior["y"], np.array([y])])
 
         # Also update progress
         progress["config"] = np.vstack([progress["config"], result.x])
-        progress["value"] = np.append(progress["value"], np.array([y]))
-        progress["time"] = np.append(
-            progress["time"], np.array([iteration_time]))
+        progress["value"] = np.vstack([progress["value"], np.array([y])])
+        progress["time"] = np.vstack([
+            progress["time"], np.array([iteration_time])])
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
