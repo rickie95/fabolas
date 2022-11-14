@@ -5,10 +5,8 @@ import numpy as np
 import scipy.stats as sts
 from emcee import EnsembleSampler
 from scipy.optimize import minimize
-from sklearn.model_selection import GridSearchCV
 from george.gp import GP
 from george.kernels import Matern52Kernel
-from sklearn.svm import SVC
 
 import epmgp
 from acquisitions import expected_improvement, information_gain
@@ -74,7 +72,7 @@ def sample_hypers(X, y, K=20):
         except:
             return -np.inf
 
-        return prior + hyper_distribution.log_likelihood(y.reshape(-1), quiet=True)
+        return prior + hyper_distribution.log_likelihood(y if len(y.shape) == 1 else y.reshape(-1), quiet=True)
 
     nwalkers, ndim, iterations = K, kernel.ndim + 2, 500
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
@@ -175,8 +173,6 @@ def es(obj_function, prior, bounds):
     # The stopping criteria is based on a fixed number
     # of iterations but could take in account
     # a "min improvement" policy
-
-    prior['y'] = prior['y']
 
     wallclock_time = time.time()
     progress = {
