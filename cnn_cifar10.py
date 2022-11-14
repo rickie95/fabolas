@@ -3,7 +3,6 @@
 """
 
 import logging
-import time
 import sys
 
 import numpy as np
@@ -76,15 +75,12 @@ def obj_function(configuration):
     )
 
     model.summary()
-
-    starting_time = time.time()
     history = model.fit(dataset["X"], dataset["y"], epochs=40, verbose=1,
                         validation_data=(dataset["X_test"], dataset["y_test"]))
-    cost = time.time() - starting_time
 
     val_accuracy = history.history['val_accuracy'][-1]
 
-    return val_accuracy, cost
+    return val_accuracy
 
 
 def generate_prior(bounds, n_points=25):
@@ -94,8 +90,6 @@ def generate_prior(bounds, n_points=25):
         "s": np.empty((0, 1)),
         "c": np.empty((0, 1))
     }
-
-    # [4, 4, 4, 32, -6], [9, 9, 9, 512, 0]
 
     prior_candidates = np.random.uniform(
         low=[b[0] for b in bounds],
@@ -143,6 +137,9 @@ def cnn_cifar10(method='random_search', save_path=None):
         prior = generate_prior()
 
     assert (prior is not None)
+
+    # Dry run for caching data
+    load_cifar()
 
     bounds = [
         (4, 9),
