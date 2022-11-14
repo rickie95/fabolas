@@ -29,7 +29,11 @@ def sample_hypers(X, y, K=20):
     """
 
     cov = 1
-    kernel = cov * Matern52Kernel(metric=[1., 1.], ndim=2, axes=[0, 1])
+    kernel = cov * Matern52Kernel(
+            metric=np.ones(X.shape[1]),
+            ndim=X.shape[1],
+            axes=[x for x in range(X.shape[1])]
+        )
     hyper_distribution = GP(kernel=kernel, mean=np.mean(y))
     hyper_distribution.compute(X, yerr=0.05)
 
@@ -37,7 +41,9 @@ def sample_hypers(X, y, K=20):
         """
         Loglikelihood of the current distribution over hypers + prior
         """
-        cov, lamb, noise = theta
+        cov = theta[0]
+        lamb = theta[1:-1]
+        noise = theta[-1]
 
         prior = 0
 
@@ -49,19 +55,20 @@ def sample_hypers(X, y, K=20):
             return -np.inf
 
         # Log likelihood for lambda is 0 when lambda is inside its bounds
-        if not -9 < lamb < 2:
+        if not (np.all(np.array(lamb) > -9) and np.all(np.array(lamb) < 2)):
             return -np.inf
 
         if not -20 < noise < 20:
             return -np.inf
 
         # Log probability for lognormal distribution
-        prior += sts.lognorm.logpdf(cov, covariance_prior_mean, covariance_prior_sigma)
+        prior += sts.lognorm.logpdf(cov, covariance_prior_mean,
+                                    covariance_prior_sigma)
 
         # Horseshoe
         prior += Horseshoe(scale=0.1).logpdf(noise)
 
-        hyper_distribution.kernel.set_parameter_vector([cov, lamb, lamb])
+        hyper_distribution.kernel.set_parameter_vector([cov, *lamb])
         try:
             hyper_distribution.compute(X, yerr=np.sqrt(noise))
         except:
@@ -69,9 +76,10 @@ def sample_hypers(X, y, K=20):
 
         return prior + hyper_distribution.log_likelihood(y.reshape(-1), quiet=True)
 
-    nwalkers, ndim, iterations = K, kernel.ndim + 1, 500
+    nwalkers, ndim, iterations = K, kernel.ndim + 2, 500
     sampler = EnsembleSampler(nwalkers, ndim, log_prob)
-    state = sampler.run_mcmc(np.random.rand(nwalkers, ndim), 100, rstate0=np.random.get_state())
+    state = sampler.run_mcmc(np.random.rand(
+        nwalkers, ndim), 100, rstate0=np.random.get_state())
     sampler.reset()
     sampler.run_mcmc(state, iterations)
     return sampler.chain[:, -1]
@@ -87,7 +95,8 @@ def entropy_search(dataset, bounds):
     # - lambda
     # - covariance amplitude for Matérn kernel
     # - noise variance
-    hyperparameters = sample_hypers(dataset["X"], dataset["y"], K=n_hyper_samples)
+    hyperparameters = sample_hypers(
+        dataset["X"], dataset["y"], K=n_hyper_samples)
 
     Omega = []
     p_min = []
@@ -98,8 +107,14 @@ def entropy_search(dataset, bounds):
     covariances = []
 
     for hyper in hyperparameters:
-        kernel_cov, lamb, noise = hyper
-        kernel = kernel_cov * Matern52Kernel(metric=[1., 1.], ndim=2, axes=[0, 1])
+        kernel_cov = hyper[0]
+        lamb = hyper[1:-1]
+        noise = hyper[-1]
+        kernel = kernel_cov * Matern52Kernel(
+            metric=np.e**lamb,
+            ndim=dataset["X"].shape[1],
+            axes=[x for x in range(dataset["X"].shape[1])]
+        )
         regressor = GP(kernel=kernel, mean=np.mean(dataset["y"]))
         regressor.compute(dataset["X"], yerr=noise)
         models.append(regressor)
@@ -112,12 +127,13 @@ def entropy_search(dataset, bounds):
         )
 
         representers.append(X_samples)
-        mean, cov = regressor.predict(dataset["y"], X_samples, return_cov=True)
+        mean, cov = regressor.predict(dataset["y"].reshape(-1), X_samples, return_cov=True)
         means.append(mean)
         covariances.append(cov)
         # compute their Expected Improvement
         logging.debug("Computing EI...")
-        exp_improvement = expected_improvement(mean, cov, regressor.sample(X_samples))
+        exp_improvement = expected_improvement(
+            mean, cov, regressor.sample(X_samples))
         U.append(exp_improvement)
 
         # Compute p_min using EPMGP
@@ -131,7 +147,8 @@ def entropy_search(dataset, bounds):
         logging.debug("Generating innovations..")
         for _ in range(n_innovations):
             # Generate a gaussian noise vector
-            innovations.append(np.random.normal(size=n_gen_samples).reshape(-1, 1))
+            innovations.append(np.random.normal(
+                size=n_gen_samples).reshape(-1, 1))
 
         Omega.append(innovations)
 
@@ -140,26 +157,12 @@ def entropy_search(dataset, bounds):
     # Maybe random + last good configuration?
     logging.info("Ready to optimize Information Gain")
     return minimize(
-        fun=lambda x: -information_gain(x, models, p_min, representers, U, Omega, dataset),
+        fun=lambda x: -
+        information_gain(x, models, p_min, representers, U, Omega, dataset),
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
         bounds=bounds,
-        )
-
-
-def generate_prior(data):
-
-    C_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
-    gamma_values = [10**(x) for x in [-10, -5, 0, 5, 10]]
-
-    grid = GridSearchCV(SVC(kernel="rbf"), {'C': C_values, 'gamma': gamma_values},
-                        n_jobs=-1, verbose=3, cv=3)
-    grid.fit(data["X"], data["y"])
-
-    x_values = np.log10(np.array([(params["C"], params["gamma"]) for params in grid.cv_results_["params"]]))
-    y_values = np.array(grid.cv_results_["mean_test_score"])
-
-    return x_values, y_values
+    )
 
 
 def es(obj_function, prior, bounds):
@@ -169,11 +172,11 @@ def es(obj_function, prior, bounds):
     """
     iterations = 10
 
-    # The stopping criteria is based on a fixed number 
+    # The stopping criteria is based on a fixed number
     # of iterations but could take in account
     # a "min improvement" policy
 
-    prior['y'] = prior['y'].reshape(-1)
+    prior['y'] = prior['y']
 
     wallclock_time = time.time()
     progress = {
@@ -184,7 +187,7 @@ def es(obj_function, prior, bounds):
 
     for i in range(iterations):
         logging.info(f"---- ES: Iteration #{i+1} ----")
-        
+
         # Find the next candidate
         result = None
         while result is None:
@@ -207,7 +210,8 @@ def es(obj_function, prior, bounds):
         # Also update progress
         progress["config"] = np.vstack([progress["config"], result.x])
         progress["value"] = np.append(progress["value"], np.array([y]))
-        progress["time"] = np.append(progress["time"], np.array([iteration_time]))
+        progress["time"] = np.append(
+            progress["time"], np.array([iteration_time]))
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
