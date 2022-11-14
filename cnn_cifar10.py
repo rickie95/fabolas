@@ -126,9 +126,9 @@ def load_prior(with_size=1):
                 np.array([df["batch_size"]]),
                 np.log10(np.array([df["learn_rate"]]))),
             axis=0).T,
-        "y": np.array([df["score"]]).reshape(-1, 1),
-        "c": np.array([df["cost_s"]]).reshape(-1, 1),
-        "size": np.array([df["size"]]).reshape(-1, 1)
+        "y": np.array(df["score"]).reshape(-1, 1),
+        "c": np.array(df["cost_s"]).reshape(-1, 1),
+        "size": np.array(df["size"]).reshape(-1, 1)
     }
 
 
