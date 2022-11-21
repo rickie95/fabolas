@@ -253,13 +253,6 @@ def fabolas(obj_function, prior, bounds):
     """
     iterations = 10
 
-    if prior is None:
-        logging.info("Prior not available, proceed to generate it..")
-        prior = generate_prior()
-    # dataset = load_prior()
-
-    prior['y'] = prior['y'].reshape(-1)
-
     prior["min_time"] = 0
     if min(prior["c"]) < 0:
         prior["min_time"] = np.array(min(prior["c"]))
