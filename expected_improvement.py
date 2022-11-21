@@ -78,13 +78,12 @@ def get_candidate(prior, bounds):
             size=(n_gen_samples, prior["X"].shape[1])
         )
 
-    y_pred = gpr.predict(prior["X"])
     mean, covariance = gpr.predict(X_samples, return_cov=True)
 
     ei = expected_improvement(
         mean,
         covariance,
-        y_pred
+        prior["y"]
     )
 
     index = np.argmax(ei)
