@@ -134,7 +134,8 @@ def cnn_cifar10(method='random_search', save_path=None):
     logging.basicConfig(
         format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
         level=logging.INFO,
-        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log"
+        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
+        filemode="w"
     )
 
     prior = None
