@@ -129,7 +129,8 @@ def load_prior(with_size=1):
 
 def cnn_cifar10(method='random_search', save_path=None):
     save_path = "./results/cnn_cifar10" if save_path is None else save_path
-
+    print(f"Log will be found at {save_path}/cnn_cifar10_{datetime.datetime.now()}.log")
+    
     logging.basicConfig(
         format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
         level=logging.INFO,
