@@ -148,11 +148,20 @@ def get_candidate(dataset, bounds):
         cov, lamb1, lamb2, noise = h
         kernel = cov * Matern52Kernel(
             metric=np.exp([lamb1, lamb1]),
-            ndim=3,
-            axes=[0, 1]
+            ndim=dataset["X"].shape[1],
+            axes=[x for x in (range(dataset["X"].shape[1] - 1)) ]
         ) * (
-            LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
-            ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
+            LinearKernel(
+                log_gamma2=lamb2,
+                order=1, 
+                ndim=dataset["X"].shape[1], 
+                axes=[(dataset["X"].shape[1] - 1)]
+                ) +
+            ConstantKernel(
+                log_constant=lamb2, 
+                ndim=dataset["X"].shape[1],
+                axes=[(dataset["X"].shape[1] - 1)]
+                )
         )
 
         regressor = GP(kernel=kernel, mean=np.mean(dataset["y"]))
@@ -201,11 +210,20 @@ def get_candidate(dataset, bounds):
         cov, lamb1, lamb2, noise = h
         kernel = cov * Matern52Kernel(
             metric=np.exp([lamb1, lamb1]),
-            ndim=3,
-            axes=[0, 1]
+            ndim=dataset["X"].shape[1],
+            axes=[x for x in (range(dataset["X"].shape[1] - 1)) ]
         ) * (
-            LinearKernel(log_gamma2=lamb2, order=1, ndim=3, axes=[2]) +
-            ConstantKernel(log_constant=lamb2, ndim=3, axes=[2])
+            LinearKernel(
+                log_gamma2=lamb2,
+                order=1, 
+                ndim=dataset["X"].shape[1], 
+                axes=[(dataset["X"].shape[1] - 1)]
+                ) +
+            ConstantKernel(
+                log_constant=lamb2, 
+                ndim=dataset["X"].shape[1],
+                axes=[(dataset["X"].shape[1] - 1)]
+                )
         )
 
         cost_regressor = GP(kernel=kernel, mean=np.mean(dataset["c"]))
@@ -234,13 +252,6 @@ def fabolas(obj_function, prior, bounds):
         Test FABOLAS with a simple "complex" function.
     """
     iterations = 10
-
-    if prior is None:
-        logging.info("Prior not available, proceed to generate it..")
-        prior = generate_prior()
-    # dataset = load_prior()
-
-    prior['y'] = prior['y'].reshape(-1)
 
     prior["min_time"] = 0
     if min(prior["c"]) < 0:

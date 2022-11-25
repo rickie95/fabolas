@@ -43,8 +43,15 @@ def expected_improvement(mean: np.array, covariance: np.array, y_values: np.arra
     # Since we need sigma(x) we just use the diagonal
     variance = np.sqrt(np.diag(covariance))
 
+    assert variance.shape == (mean.shape[0],)
+
+    logging.debug(f"Variance shape {variance.shape}")
+
     u = (mean - y_max - exploration) / (variance + 1E-9)
     ei = variance * (u * sts.norm.cdf(u) + sts.norm.pdf(u))
+
+    assert u.shape == (mean.shape[0],)
+    assert ei.shape == (mean.shape[0],)
 
     ei[variance <= 0.] = 0.
 

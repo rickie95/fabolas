@@ -12,6 +12,8 @@ import epmgp
 from acquisitions import expected_improvement, information_gain
 from horseshoe import Horseshoe
 
+from utils import save_results
+
 covariance_prior_mean, covariance_prior_sigma = 1, 0
 
 
@@ -28,10 +30,10 @@ def sample_hypers(X, y, K=20):
 
     cov = 1
     kernel = cov * Matern52Kernel(
-            metric=np.ones(X.shape[1]),
-            ndim=X.shape[1],
-            axes=[x for x in range(X.shape[1])]
-        )
+        metric=np.ones(X.shape[1]),
+        ndim=X.shape[1],
+        axes=[x for x in range(X.shape[1])]
+    )
     hyper_distribution = GP(kernel=kernel, mean=np.mean(y))
     hyper_distribution.compute(X, yerr=0.05)
 
@@ -125,7 +127,8 @@ def entropy_search(dataset, bounds):
         )
 
         representers.append(X_samples)
-        mean, cov = regressor.predict(dataset["y"].reshape(-1), X_samples, return_cov=True)
+        mean, cov = regressor.predict(
+            dataset["y"].reshape(-1), X_samples, return_cov=True)
         means.append(mean)
         covariances.append(cov)
         # compute their Expected Improvement
@@ -211,6 +214,13 @@ def es(obj_function, prior, bounds):
         progress["value"] = np.vstack([progress["value"], np.array([y])])
         progress["time"] = np.vstack([
             progress["time"], np.array([iteration_time])])
+
+        save_results(
+            results=prior,
+            progress=progress,
+            method="entropy_search",
+            folder="/content/drive/MyDrive/ml/es"
+        )
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])

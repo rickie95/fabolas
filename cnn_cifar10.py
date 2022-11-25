@@ -4,6 +4,7 @@
 
 import logging
 import sys
+import datetime
 
 import numpy as np
 import pandas as pd
@@ -127,6 +128,16 @@ def load_prior(with_size=1):
 
 
 def cnn_cifar10(method='random_search', save_path=None):
+    save_path = "./results/cnn_cifar10" if save_path is None else save_path
+    print(f"Log will be found at {save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log")
+    
+    logging.basicConfig(
+        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
+        filemode="w"
+    )
+
     prior = None
 
     method = 'random_search' if method is None else method
@@ -181,24 +192,25 @@ def cnn_cifar10(method='random_search', save_path=None):
         results,
         progress,
         method,
-        "./results/cnn_cifar10" if save_path is None else save_path
+        save_path
     )
 
     return 0
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
-
     method = None
     save_path = None
 
-    if len(sys.argv) == 2:
-        method = sys.argv[1]
+    print(f"Passed {len(sys.argv)} arguments:")
 
-    if len(sys.argv) == 3:
+    if len(sys.argv) > 1:
+        method = sys.argv[1]
+        print(f"method={sys.argv[1]}")
+
+    if len(sys.argv) > 2:
         save_path = sys.argv[2]
+        print(f"save_path={sys.argv[2]}")
 
     if cnn_cifar10(method=method, save_path=save_path) > 0:
         print_usage(sys.argv)

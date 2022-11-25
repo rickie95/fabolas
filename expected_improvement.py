@@ -4,6 +4,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern
 
 from acquisitions import expected_improvement
+from utils import save_results
 
 import logging
 import time
@@ -57,6 +58,8 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         progress["value"] = np.vstack([progress["value"], np.array([y_candidate])])
         progress["time"] = np.vstack([progress["time"], np.array([iteration_time])])
 
+        save_results(results, progress, "ei", "/content/drive/MyDrive/ml/ei")
+
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
     prior["X_best"] = prior["X"][imax]
@@ -78,13 +81,12 @@ def get_candidate(prior, bounds):
             size=(n_gen_samples, prior["X"].shape[1])
         )
 
-    y_pred = gpr.predict(prior["X"])
     mean, covariance = gpr.predict(X_samples, return_cov=True)
 
     ei = expected_improvement(
         mean,
         covariance,
-        y_pred
+        prior["y"]
     )
 
     index = np.argmax(ei)
