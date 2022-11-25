@@ -58,7 +58,7 @@ def ei(obj_function, prior, bounds=None) -> np.array:
         progress["value"] = np.vstack([progress["value"], np.array([y_candidate])])
         progress["time"] = np.vstack([progress["time"], np.array([iteration_time])])
 
-        save_results(results, progress, "ei", "/content/drive/MyDrive/ml/ei")
+        save_results(prior, progress, "ei", "/content/drive/MyDrive/ml/ei")
 
     prior["y_best"] = max(prior["y"])
     imax = np.argmax(prior["y"])
