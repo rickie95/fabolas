@@ -5,4 +5,6 @@ emcee==3.1.2
 mnist==0.2.2
 george==0.4.0
 numpy==1.23.1
+pandas==1.4.3
+tensoflow==2.9.1
 # pyqt5 is optional, only if you need to visualize plots
