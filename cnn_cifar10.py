@@ -127,6 +127,14 @@ def load_prior(with_size=1):
 
 
 def cnn_cifar10(method='random_search', save_path=None):
+    save_path = "./results/cnn_cifar10" if save_path is None else save_path
+
+    logging.basicConfig(
+        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        filename=f"{save_path}/cnn_cifar10_{datetime.datetime.now()}.log"
+    )
+
     prior = None
 
     method = 'random_search' if method is None else method
@@ -181,24 +189,25 @@ def cnn_cifar10(method='random_search', save_path=None):
         results,
         progress,
         method,
-        "./results/cnn_cifar10" if save_path is None else save_path
+        save_path
     )
 
     return 0
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s', level=logging.INFO)
-
     method = None
     save_path = None
 
+    print(f"Passed {len(sys.argv)} arguments:")
+
     if len(sys.argv) == 2:
         method = sys.argv[1]
+        print(f"method={sys.argv[1]}")
 
     if len(sys.argv) == 3:
         save_path = sys.argv[2]
+        print(f"save_path={sys.argv[2]}")
 
     if cnn_cifar10(method=method, save_path=save_path) > 0:
         print_usage(sys.argv)
