@@ -160,6 +160,9 @@ def entropy_search(dataset, bounds):
         x0=dataset["X"][np.argmax(dataset["y"])],
         method='L-BFGS-B',
         bounds=bounds,
+        options={
+            'maxiter': 100
+        }
     )
 
 
