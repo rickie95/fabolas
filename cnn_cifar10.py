@@ -204,11 +204,11 @@ if __name__ == "__main__":
 
     print(f"Passed {len(sys.argv)} arguments:")
 
-    if len(sys.argv) > 0:
+    if len(sys.argv) > 1:
         method = sys.argv[1]
         print(f"method={sys.argv[1]}")
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         save_path = sys.argv[2]
         print(f"save_path={sys.argv[2]}")
 
