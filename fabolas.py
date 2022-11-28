@@ -39,7 +39,9 @@ def log_likelihood(params, gp, X, y):
     """
 
     prior = 0
-    cov, lamb1, lamb2, noise = params
+    cov = params[0]
+    lamb = params[1:-1]
+    noise = params[-1]
 
     # Check first if all parameters are inside some reasonable bounds.
     # This is mostly due to avoid silly choices that could be ammissible
@@ -49,10 +51,7 @@ def log_likelihood(params, gp, X, y):
         return -np.inf
 
     # All lengthscales use an uniform prior
-    if not -10 < lamb1 < 2:
-        return -np.inf
-
-    if not -9 < lamb2 < 2:
+    if not (np.all(np.array(lamb) > -9) and np.all(np.array(lamb) < 2)):
         return -np.inf
 
     if not -20 < noise < 20:
@@ -68,8 +67,8 @@ def log_likelihood(params, gp, X, y):
     # from the GP
 
     # Update the kernel and compute the lnlikelihood.
-    # [covariance, matern_length_dim_1, matern_length_dim2, linear_length, bias_length]
-    gp.kernel.set_parameter_vector([cov, lamb1, lamb1, lamb2, lamb2])
+    # [covariance, matern_lengthscales, linear_length, bias_length]
+    gp.kernel.set_parameter_vector([cov, *(np.e**lamb[:-2]), *lamb[-2:]])
     try:
         if noise < 0:
             return -np.inf
@@ -93,9 +92,23 @@ def sample_hypers(X, y, K=20):
     """
     cov = 1
     # Kernel params:
-    kernel = cov * Matern52Kernel(metric=np.array([0.1, 0.1]), ndim=3, axes=[0, 1]) * (
-        LinearKernel(log_gamma2=np.log(1), order=1, ndim=3, axes=[2])
-        + ConstantKernel(log_constant=np.log(1), ndim=3, axes=[2]))
+    kernel = cov * Matern52Kernel(
+        metric=np.ones(X.shape[1] - 1) * 0.1,
+        ndim=X.shape[1],
+        axes=[x for x in range(X.shape[1] - 1)]
+        ) * (
+                LinearKernel(
+                    log_gamma2=np.log(1), 
+                    order=1,
+                    ndim=X.shape[1], 
+                    axes=[X.shape[1] - 1]
+                    )
+                + ConstantKernel(
+                    log_constant=np.log(1),
+                    ndim=X.shape[1], 
+                    axes=[X.shape[1] - 1]
+                    )
+            )
 
     function_regressor = GP(kernel=kernel, mean=np.mean(y))
 
@@ -103,12 +116,15 @@ def sample_hypers(X, y, K=20):
 
     sampler = EnsembleSampler(
         nwalkers=20,
-        ndim=len(kernel) - 1,
+        ndim=len(kernel) + 1,
         log_prob_fn=log_likelihood,
         args=[function_regressor, X, y])
 
-    state = sampler.run_mcmc(np.random.rand(nwalkers, len(
-        kernel) - 1), 100, rstate0=np.random.get_state())
+    state = sampler.run_mcmc(
+        np.random.rand(nwalkers, len(kernel) + 1), 
+        100, 
+        rstate0=np.random.get_state()
+    )
     sampler.reset()
     sampler.run_mcmc(state, iterations)
 
@@ -145,22 +161,24 @@ def get_candidate(dataset, bounds):
     p_min = []
 
     for h in hypers:
-        cov, lamb1, lamb2, noise = h
+        cov = h[0]
+        lamb = h[1:-1]
+        noise = h[-1]
         kernel = cov * Matern52Kernel(
-            metric=np.exp([lamb1, lamb1]),
-            ndim=dataset["X"].shape[1],
-            axes=[x for x in (range(dataset["X"].shape[1] - 1)) ]
+            metric=np.e**(lamb[:-2]),
+            ndim=dataset["X"].shape[1] + 1,
+            axes=[x for x in range(dataset["X"].shape[1]) ]
         ) * (
             LinearKernel(
-                log_gamma2=lamb2,
+                log_gamma2=lamb[-2],
                 order=1, 
-                ndim=dataset["X"].shape[1], 
-                axes=[(dataset["X"].shape[1] - 1)]
+                ndim=dataset["X"].shape[1] + 1, 
+                axes=[dataset["X"].shape[1]]
                 ) +
             ConstantKernel(
-                log_constant=lamb2, 
-                ndim=dataset["X"].shape[1],
-                axes=[(dataset["X"].shape[1] - 1)]
+                log_constant=lamb[-1], 
+                ndim=dataset["X"].shape[1] + 1,
+                axes=[dataset["X"].shape[1]]
                 )
         )
 
@@ -183,12 +201,22 @@ def get_candidate(dataset, bounds):
         mean, cov = regressor.predict(
             dataset["y"].reshape(-1), X_samples, return_cov=True)
 
+        # Limit negative values in cov, in order to avoid 
+        # numerical instability while computing IG.
+        cov = np.clip(cov, np.finfo(cov.dtype).eps, np.inf)
+
         means.append(mean)
         covariances.append(cov)
 
         logging.debug("Computing EI...")
         exp_improvement = expected_improvement(
             mean, cov, regressor.sample(X_samples))
+
+        exp_improvement = np.clip(
+            exp_improvement, 
+            np.finfo(exp_improvement.dtype).eps, 
+            np.inf
+        )
         U.append(exp_improvement)
 
         logging.debug("Computing pMin")
@@ -207,22 +235,24 @@ def get_candidate(dataset, bounds):
         Omega.append(innovations)
 
     for ch in cost_hypers:
-        cov, lamb1, lamb2, noise = h
+        cov = ch[0]
+        lamb = ch[1:-1]
+        noise = ch[-1]
         kernel = cov * Matern52Kernel(
-            metric=np.exp([lamb1, lamb1]),
-            ndim=dataset["X"].shape[1],
-            axes=[x for x in (range(dataset["X"].shape[1] - 1)) ]
+            metric=np.e**(lamb[:-2]),
+            ndim=dataset["X"].shape[1] + 1,
+            axes=[x for x in range(dataset["X"].shape[1])]
         ) * (
             LinearKernel(
-                log_gamma2=lamb2,
+                log_gamma2=lamb[-2],
                 order=1, 
-                ndim=dataset["X"].shape[1], 
-                axes=[(dataset["X"].shape[1] - 1)]
+                ndim=dataset["X"].shape[1] + 1, 
+                axes=[dataset["X"].shape[1]]
                 ) +
             ConstantKernel(
-                log_constant=lamb2, 
-                ndim=dataset["X"].shape[1],
-                axes=[(dataset["X"].shape[1] - 1)]
+                log_constant=lamb[-1], 
+                ndim=dataset["X"].shape[1] + 1,
+                axes=[dataset["X"].shape[1]]
                 )
         )
 

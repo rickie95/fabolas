@@ -32,7 +32,7 @@ def obj_function(configuration):
     assert 4 < len(
         configuration) < 7, "Configuration must hold 5 parameters (6 if running FABOLAS)"
 
-    l1_filters, l2_filters, l3_filters, batch_size, learning_rate = configuration[0:6]
+    l1_filters, l2_filters, l3_filters, batch_size, learning_rate = configuration[0:5]
 
     if len(configuration) == 6:
         training_set_size = configuration[-1]
@@ -75,8 +75,14 @@ def obj_function(configuration):
     )
 
     model.summary()
-    history = model.fit(dataset["X"], dataset["y"], epochs=40, verbose=1,
-                        validation_data=(dataset["X_test"], dataset["y_test"]))
+    history = model.fit(
+        dataset["X"], 
+        dataset["y"], 
+        epochs=40, 
+        batch_size=batch_size,
+        verbose=1,
+        validation_data=(dataset["X_test"], dataset["y_test"])
+        )
 
     val_accuracy = history.history['val_accuracy'][-1]
 
@@ -169,8 +175,9 @@ def cnn_cifar10(method='random_search', save_path=None):
     elif method == 'fabolas':
         from fabolas import fabolas
         logging.info("Starting FABOLAS...")
+        bounds.append((1/256, 1))
         results, progress = fabolas(obj_function, load_prior(
-            with_size=True), [(-10, 10), (-10, 10), (1/256, 1)])
+            with_size=True), bounds)
 
     else:
         return 1

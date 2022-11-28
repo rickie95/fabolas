@@ -47,7 +47,7 @@ def expected_improvement(mean: np.array, covariance: np.array, y_values: np.arra
 
     logging.debug(f"Variance shape {variance.shape}")
 
-    u = (mean - y_max - exploration) / (variance + 1E-9)
+    u = (mean - y_max - exploration) / variance
     ei = variance * (u * sts.norm.cdf(u) + sts.norm.pdf(u))
 
     assert u.shape == (mean.shape[0],)
