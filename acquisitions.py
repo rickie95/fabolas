@@ -38,7 +38,24 @@ def compute_innovations(x, y, model, representer_points, variance):
 
 
 def expected_improvement(mean: np.array, covariance: np.array, y_values: np.array, exploration=0):
+    """
+        Compute Expected Improvement
+
+        ### Parameters
+        - mean:         np.array (N,)
+        - covariance:   np.array (N, N)
+        - y_values:     np.array (N,)
+
+        ### Returns
+        - ei:           np.array(N,)
+    """
     y_max = y_values.max()
+
+    # Double check mean array, in some versions of numpy
+    # a 2D array would produce an NxN result which
+    #  would be incorrect.
+    if len(mean.shape) > 1:
+        mean = mean.reshape(-1)
 
     # Since we need sigma(x) we just use the diagonal
     variance = np.sqrt(np.diag(covariance))
