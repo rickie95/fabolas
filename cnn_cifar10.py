@@ -41,9 +41,11 @@ def obj_function(configuration):
     dataset = load_cifar(training_set_size)
 
     # Remap log scale parameters
-    l1_filters = 2**l1_filters
-    l2_filters = 2**l2_filters
-    l3_filters = 2**l3_filters
+    l1_filters = (int) (2**np.round(l1_filters))
+    l2_filters = (int) (2**np.round(l2_filters))
+    l3_filters = (int) (2**np.round(l3_filters))
+
+    batch_size = (int) (np.round(batch_size))
 
     learning_rate = 10**learning_rate
 
