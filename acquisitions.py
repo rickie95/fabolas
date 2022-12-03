@@ -167,8 +167,17 @@ def information_gain(test_point, models, p_min, representers, U, Omega, dataset,
     return 1/len(models) * a
 
 
-def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega):
+def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega, n_innovations=20):
     overhead_cost = 0.0001
-    predicted_cost, _ = predict_testpoint_george(cost_models, dataset["c"], test_point)
+    predicted_cost, _ = predict_testpoint_george(
+        cost_models, 
+        dataset["c"], 
+        test_point
+        )
     cost_factor = 1/(predicted_cost + overhead_cost)
-    return cost_factor * information_gain(test_point, models, p_min, representers, U, Omega, dataset)
+    ig = information_gain(test_point, models, p_min,
+                          representers, U, Omega, dataset, n_innovations, enable_log=False)
+    ig_cost = cost_factor * ig
+    logging.info(
+        f"IG: {ig}, cost_f {cost_factor}, ig_cost {ig_cost}. x = {test_point}")
+    return ig_cost

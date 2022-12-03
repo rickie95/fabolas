@@ -9,22 +9,8 @@ from george.kernels import ConstantKernel, LinearKernel, Matern52Kernel
 from scipy.optimize import minimize
 
 import epmgp
-from acquisitions import (expected_improvement, information_gain,
-                          predict_testpoint_george)
+from acquisitions import (expected_improvement, information_gain_cost)
 from horseshoe import Horseshoe
-
-
-def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega):
-    overhead_cost = 0.0001
-    predicted_cost, _ = predict_testpoint_george(
-        cost_models, dataset["c"], test_point)
-    cost_factor = 1/(predicted_cost + overhead_cost)
-    ig = information_gain(test_point, models, p_min,
-                          representers, U, Omega, dataset, enable_log=False)
-    ig_cost = cost_factor * ig
-    logging.info(
-        f"IG: {ig}, cost_f {cost_factor}, ig_cost {ig_cost}. x = {test_point}")
-    return ig_cost
 
 
 def log_likelihood(params, gp, X, y):
@@ -115,7 +101,7 @@ def sample_hypers(X, y, K=20):
     nwalkers, iterations = K, 500
 
     sampler = EnsembleSampler(
-        nwalkers=20,
+        nwalkers=nwalkers,
         ndim=len(kernel) + 1,
         log_prob_fn=log_likelihood,
         args=[function_regressor, X, y])
@@ -270,7 +256,8 @@ def get_candidate(dataset, bounds):
 
     return minimize(
         fun=lambda x: - information_gain_cost(
-            x, cost_models, models, dataset, p_min, representers, U, Omega),
+            x, cost_models, models, dataset, p_min,
+            representers, U, Omega, n_innovations=n_innovations),
         x0=starting_point,
         method='L-BFGS-B',
         bounds=bounds,
