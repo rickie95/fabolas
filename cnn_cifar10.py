@@ -196,7 +196,11 @@ def cnn_cifar10(method='random_search', save_path=None):
     else:
         return 1
 
-    logging.info(f"Best value: {prior['y_best']}, with conf {prior['X_best']}")
+    y_best = min(results["y"])
+    imax = np.argmin(results["y"])
+    x_best = results["X"][imax]
+
+    logging.info(f"Best value: {y_best}, with conf {x_best}")
 
     save_results(
         results,
