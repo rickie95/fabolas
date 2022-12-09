@@ -159,7 +159,7 @@ def cnn_cifar10(method='random_search', save_path=None):
     assert (prior is not None)
 
     # Dry run for caching data
-    #load_cifar()
+    load_cifar()
 
     bounds = [
         (4, 9),
