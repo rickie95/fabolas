@@ -132,7 +132,7 @@ def load_prior(with_size=False):
                           df["l3_filters"]])
             ),
                 np.array([df["batch_size"]]),
-                np.log10(np.array([df["learn_rate"]]))),
+                np.array([df["learn_rate"]])),
             axis=0).T,
         "y": np.array(df["score"]).reshape(-1, 1),
         "c": np.array(df["cost_s"]).reshape(-1, 1),
