@@ -126,10 +126,10 @@ def load_prior(with_size=False):
 
     return {
         "X": np.concatenate(
-            (np.log2(
-                np.array([df["l1_filters"],
-                          df["l2_filters"],
-                          df["l3_filters"]])
+            (np.array(
+                [df["l1_filters"],
+                df["l2_filters"],
+                df["l3_filters"]]
             ),
                 np.array([df["batch_size"]]),
                 np.array([df["learn_rate"]])),
