@@ -94,6 +94,10 @@ def obj_function(configuration):
 
     val_accuracy = history.history['val_accuracy'][-1]
 
+    # Bit of a cleanup, otherwise it will run out of memory
+    del dataset
+    clear_session()
+
     return val_accuracy
 
 
