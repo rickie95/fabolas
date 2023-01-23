@@ -96,7 +96,7 @@ def obj_function(configuration):
 
     # Bit of a cleanup, otherwise it will run out of memory
     del dataset
-    clear_session()
+    tensorflow.keras.backend.clear_session()
 
     return val_accuracy
 
