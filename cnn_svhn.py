@@ -17,6 +17,7 @@ from keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras import backend as K 
 
 from random import sample
 
@@ -96,7 +97,7 @@ def obj_function(configuration):
 
     # Bit of a cleanup, otherwise it will run out of memory
     del dataset
-    clear_session()
+    K.clear_session()
 
     return val_accuracy
 
