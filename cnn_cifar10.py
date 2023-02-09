@@ -142,14 +142,6 @@ def cnn_cifar10(method='random_search', save_path=None):
     save_path = "./results/cnn_cifar10" if save_path is None else save_path
     print(f"Log will be found at {save_path}")
 
-    logging.basicConfig(
-        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
-        level=logging.INFO,
-        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
-        filemode="w",
-        force=True
-    )
-
     prior = None
 
     method = 'random_search' if method is None else method
@@ -228,6 +220,14 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         save_path = sys.argv[2]
         print(f"save_path={sys.argv[2]}")
+
+    logging.basicConfig(
+        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
+        filemode="w",
+        force=True
+    )
 
     if cnn_cifar10(method=method, save_path=save_path) > 0:
         print_usage(sys.argv)
