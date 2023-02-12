@@ -117,10 +117,11 @@ def generate_prior(bounds, n_points=25):
 
 
 def load_prior(with_size=1):
-    df = pd.read_csv("./prior/prior_cnn_cifar10.csv")
-
-    if not with_size:
-        df = df.query("size == 1")
+    
+    if with_size:
+        df = pd.read_csv("./prior/prior_cnn_cifar10_size.csv")
+    else:
+        df = pd.read_csv("./prior/prior_cnn_cifar10.csv")
 
     return {
         "X": np.concatenate(
