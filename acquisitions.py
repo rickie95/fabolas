@@ -38,13 +38,37 @@ def compute_innovations(x, y, model, representer_points, variance):
 
 
 def expected_improvement(mean: np.array, covariance: np.array, y_values: np.array, exploration=0):
+    """
+        Compute Expected Improvement
+
+        ### Parameters
+        - mean:         np.array (N,)
+        - covariance:   np.array (N, N)
+        - y_values:     np.array (N,)
+
+        ### Returns
+        - ei:           np.array(N,)
+    """
     y_max = y_values.max()
+
+    # Double check mean array, in some versions of numpy
+    # a 2D array would produce an NxN result which
+    #  would be incorrect.
+    if len(mean.shape) > 1:
+        mean = mean.reshape(-1)
 
     # Since we need sigma(x) we just use the diagonal
     variance = np.sqrt(np.diag(covariance))
 
-    u = (mean - y_max - exploration) / (variance + 1E-9)
+    assert variance.shape == (mean.shape[0],)
+
+    logging.debug(f"Variance shape {variance.shape}")
+
+    u = (mean - y_max - exploration) / variance
     ei = variance * (u * sts.norm.cdf(u) + sts.norm.pdf(u))
+
+    assert u.shape == (mean.shape[0],)
+    assert ei.shape == (mean.shape[0],)
 
     ei[variance <= 0.] = 0.
 
@@ -143,8 +167,17 @@ def information_gain(test_point, models, p_min, representers, U, Omega, dataset,
     return 1/len(models) * a
 
 
-def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega):
+def information_gain_cost(test_point, cost_models, models, dataset, p_min, representers, U, Omega, n_innovations=20):
     overhead_cost = 0.0001
-    predicted_cost, _ = predict_testpoint_george(cost_models, dataset["c"], test_point)
+    predicted_cost, _ = predict_testpoint_george(
+        cost_models, 
+        dataset["c"], 
+        test_point
+        )
     cost_factor = 1/(predicted_cost + overhead_cost)
-    return cost_factor * information_gain(test_point, models, p_min, representers, U, Omega, dataset)
+    ig = information_gain(test_point, models, p_min,
+                          representers, U, Omega, dataset, n_innovations, enable_log=False)
+    ig_cost = cost_factor * ig
+    logging.info(
+        f"IG: {ig}, cost_f {cost_factor}, ig_cost {ig_cost}. x = {test_point}")
+    return ig_cost

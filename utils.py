@@ -11,7 +11,7 @@ def save_results(results, progress, method, folder):
     # then save two files
     # results_{method}_{datetime}.csv
     # progress_{method}_{datetime}.csv
-    path = f"./results/{folder}/{method}"
+    path = f"{folder}"
 
     if not os.path.exists(path):
         os.makedirs(path)
@@ -36,8 +36,9 @@ def save_results(results, progress, method, folder):
         results_df["c"] = results["c"]
         progress_df["size"] = progress["size"]
 
-    results_df.to_csv(os.path.join(path, f"results_{method}_{datetime.datetime.now()}"))
-    progress_df.to_csv(os.path.join(path, f"progress_{method}_{datetime.datetime.now()}"))
+    time_str: str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    results_df.to_csv(os.path.join(path, f"results_{method}_{time_str}.csv"))
+    progress_df.to_csv(os.path.join(path, f"progress_{method}_{time_str}.csv"))
     logging.info(f"Results saved in {path}.")
 
 

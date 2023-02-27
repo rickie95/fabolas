@@ -1,15 +1,16 @@
 """
-    Performs experiments on a CNN trained on CIFAR10
+    Performs experiments on a CNN trained on SVHN
 """
 
 import logging
 import sys
 import datetime
+import math
 
 import numpy as np
 import pandas as pd
 
-from datasets import load_cifar
+from datasets import load_svhn
 from utils import save_results, print_usage
 
 from keras.models import Sequential
@@ -18,6 +19,7 @@ from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras import backend as K 
 
+from random import sample
 
 def obj_function(configuration):
     """
@@ -38,8 +40,6 @@ def obj_function(configuration):
 
     if len(configuration) == 6:
         training_set_size = configuration[-1]
-
-    dataset = load_cifar(training_set_size)
 
     # Remap log scale parameters
     l1_filters = (int) (2**np.round(l1_filters))
@@ -78,10 +78,15 @@ def obj_function(configuration):
         metrics=["accuracy"]
     )
 
+    dataset = load_svhn()
+
+    indices = sample(range(0, dataset["X"].shape[0]), 
+        math.floor(dataset["X"].shape[0] * training_set_size))
+
     model.summary()
     history = model.fit(
-        dataset["X"], 
-        dataset["y"], 
+        dataset["X"][indices],
+        dataset["y"][indices], 
         epochs=40, 
         batch_size=batch_size,
         verbose=1,
@@ -89,6 +94,8 @@ def obj_function(configuration):
         )
 
     val_accuracy = history.history['val_accuracy'][-1]
+
+    # Bit of a cleanup, otherwise it will run out of memory
     del dataset
     K.clear_session()
 
@@ -116,22 +123,21 @@ def generate_prior(bounds, n_points=25):
         prior["c"] = np.append(prior["c"], np.array([y]))
 
 
-def load_prior(with_size=1):
-    
-    if with_size:
-        df = pd.read_csv("./prior/prior_cnn_cifar10_size.csv")
+def load_prior(with_size=False):
+    if not with_size:
+        df = pd.read_csv("./prior/prior_cnn_svhn.csv")
     else:
-        df = pd.read_csv("./prior/prior_cnn_cifar10.csv")
+        df = pd.read_csv("./prior/prior_cnn_svhn_size.csv")
 
     return {
         "X": np.concatenate(
-            (np.log2(
-                np.array([df["l1_filters"],
-                          df["l2_filters"],
-                          df["l3_filters"]])
+            (np.array(
+                [df["l1_filters"],
+                df["l2_filters"],
+                df["l3_filters"]]
             ),
                 np.array([df["batch_size"]]),
-                np.log10(np.array([df["learn_rate"]]))),
+                np.array([df["learn_rate"]])),
             axis=0).T,
         "y": np.array(df["score"]).reshape(-1, 1),
         "c": np.array(df["cost_s"]).reshape(-1, 1),
@@ -139,9 +145,17 @@ def load_prior(with_size=1):
     }
 
 
-def cnn_cifar10(method='random_search', save_path=None):
-    save_path = "./results/cnn_cifar10" if save_path is None else save_path
-    print(f"Log will be found at {save_path}")
+def cnn_svhn(method='random_search', save_path=None):
+    save_path = "./results/cnn_svhn" if save_path is None else save_path
+    print(f"Log will be found at {save_path}cnn_svhn_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log")
+
+    logging.basicConfig(
+        format='CNN_SVHN (%(process)s) - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        filename=f"{save_path}cnn_svhn_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
+        filemode="w",
+        force=True
+    )
 
     prior = None
 
@@ -153,9 +167,6 @@ def cnn_cifar10(method='random_search', save_path=None):
         prior = generate_prior()
 
     assert (prior is not None)
-
-    # Dry run for caching data
-    load_cifar()
 
     bounds = [
         (4, 9),
@@ -222,13 +233,5 @@ if __name__ == "__main__":
         save_path = sys.argv[2]
         print(f"save_path={sys.argv[2]}")
 
-    logging.basicConfig(
-        format='CNN_CIFAR10 (%(process)s) - %(levelname)s - %(message)s',
-        level=logging.INFO,
-        filename=f"{save_path}cnn_cifar10_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log",
-        filemode="w",
-        force=True
-    )
-
-    if cnn_cifar10(method=method, save_path=save_path) > 0:
+    if cnn_svhn(method=method, save_path=save_path) > 0:
         print_usage(sys.argv)
